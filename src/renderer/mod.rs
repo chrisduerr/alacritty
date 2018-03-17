@@ -285,8 +285,8 @@ impl GlyphCache {
                 let mut rasterized = rasterizer.get_glyph(glyph_key)
                     .unwrap_or_else(|_| Default::default());
 
-                rasterized.left += glyph_offset.x as i32;
-                rasterized.top += glyph_offset.y as i32;
+                rasterized.left += i32::from(glyph_offset.x);
+                rasterized.top += i32::from(glyph_offset.y);
                 rasterized.top -= metrics.descent as i32;
 
                 loader.load_glyph(&rasterized)
@@ -718,9 +718,15 @@ impl QuadRenderer {
         self.program = program;
     }
 
-    pub fn resize(&mut self, width: i32, height: i32) {
-        let padding_x = self.program.padding_x as i32;
-        let padding_y = self.program.padding_y as i32;
+    pub fn resize(&mut self, width: i32, height: i32, cell_width: i32, cell_height: i32) {
+        let mut padding_x = i32::from(self.program.padding_x);
+        let mut padding_y = i32::from(self.program.padding_y);
+
+        // Add padding to center the grid inside the window
+        if cell_height > 0 && cell_width > 0 {
+            padding_y += ((height - 2 * padding_y) % cell_height) / 2;
+            padding_x += ((width - 2 * padding_x) % cell_width) / 2;
+        }
 
         // viewport
         unsafe {
@@ -729,7 +735,12 @@ impl QuadRenderer {
 
         // update projection
         self.program.activate();
-        self.program.update_projection(width as f32, height as f32);
+        self.program.update_projection(
+            width as f32,
+            height as f32,
+            padding_x as f32,
+            padding_y as f32,
+        );
         self.program.deactivate();
     }
 }
@@ -1021,17 +1032,22 @@ impl ShaderProgram {
             padding_y: config.padding().y,
         };
 
-        shader.update_projection(*size.width as f32, *size.height as f32);
+        shader.update_projection(
+            *size.width as f32,
+            *size.height as f32,
+            f32::from(shader.padding_x),
+            f32::from(shader.padding_y),
+        );
 
         shader.deactivate();
 
         Ok(shader)
     }
 
-    fn update_projection(&self, width: f32, height: f32) {
+    fn update_projection(&self, width: f32, height: f32, padding_x: f32, padding_y: f32) {
         // Bounds check
-        if (width as u32) < (2 * self.padding_x as u32) ||
-            (height as u32) < (2 * self.padding_y as u32)
+        if (width as u32) < (2 * padding_x as u32) ||
+            (height as u32) < (2 * padding_y as u32)
         {
             return;
         }
@@ -1041,8 +1057,7 @@ impl ShaderProgram {
         // NB Not sure why padding change only requires changing the vertical
         //    translation in the projection, but this makes everything work
         //    correctly.
-        let ortho = cgmath::ortho(0., width - 2. * self.padding_x as f32, 2. * self.padding_y as f32,
-            height, -1., 1.);
+        let ortho = cgmath::ortho(0., width - 2. * padding_x, 2. * padding_y, height, -1., 1.);
         let projection: [[f32; 4]; 4] = ortho.into();
 
         info!("width: {}, height: {}", width, height);
