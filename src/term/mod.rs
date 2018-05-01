@@ -848,7 +848,7 @@ impl Term {
             .map(|i| (*i as usize) % tabspaces == 0)
             .collect::<Vec<bool>>();
 
-        let alt = grid.clone();
+        let alt = Grid::new(num_lines, num_cols, 0, Cell::default());
         let scroll_region = Line(0)..grid.num_lines();
 
         Term {
