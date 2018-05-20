@@ -10,10 +10,10 @@ xvfb="xvfb-run -s '-screen 0 1920x1080x24'"
 #     "'name' 'num bytes'"
 benchmarks=(\
     "'scrolling' '50000000'" \
-    "'alt-screen-random-write' '250000000'" \
+    "'alt-screen-random-write' '50000000'" \
     "'scrolling-in-region --lines-from-bottom 1' '50000000'" \
     "'scrolling-in-region --lines-from-bottom 25' '50000000'" \
-    "'unicode-random-write' '4000000'")
+    "'unicode-random-write' '1000000'")
 
 # Run all benchmarks with docker
 for i in ${!benchmarks[@]}
@@ -23,15 +23,12 @@ do
     docker run -v "$(pwd):/source" undeadleech/vtebench "cd /source && $xvfb ./target/release/alacritty -e bash ./bench.sh $bench"
 done
 
-# XXX TODO FIXME Remove
-ls -lah
-
 # Print results
-echo "\nResults:"
+echo -e "\nResults:"
 find . -iname "*.out" | while read file
 do
     echo "$file"
-    cat "$file" | head -n 2 | tail -n 1 | sed 's/real.*0m//g'
+    cat "$file" | head -n 2 | tail -n 1
     echo ""
 done
 
