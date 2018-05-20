@@ -1,4 +1,5 @@
 language: rust
+sudo: true
 cache: cargo
 service:
   - docker
