@@ -1,7 +1,5 @@
 #!/bin/bash
 
-echo "Starting headless benchmarks"
-
 # Build the project to make `./target/release/alacritty` available
 cargo build --release
 
@@ -24,6 +22,9 @@ do
     echo "Running benchmark $bench"
     sudo docker run -v "$(pwd):/source" undeadleech/vtebench "cd /source && $xvfb ./target/release/alacritty -e bash ./bench.sh $bench"
 done
+
+# XXX TODO FIXME Remove
+ls -lah
 
 # Print results
 echo "\nResults:"
