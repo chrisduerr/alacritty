@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Build the project to make `./target/release/alacritty` available
-# cargo build --release
+cargo build --release
 
 xvfb="xvfb-run -s '-screen 0 1920x1080x24'"
 
