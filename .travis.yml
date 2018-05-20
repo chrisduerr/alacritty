@@ -1,5 +1,4 @@
 language: rust
-sudo: true
 cache: cargo
 service:
   - docker
@@ -31,6 +30,9 @@ matrix:
       os: osx
   allow_failures:
     - rust: nightly
+
+before_install:
+  - if [[ -n "$DOCKER" ]]; then docker pull undeadleech/vtebench; fi
 
 script:
   - if [[ -z "$DOCKER" ]]; then cargo test --no-default-features --features "$FEATURES"; fi

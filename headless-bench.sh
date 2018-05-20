@@ -20,7 +20,7 @@ for i in ${!benchmarks[@]}
 do
     bench="${benchmarks[$i]}"
     echo "Running benchmark $bench"
-    sudo docker run -v "$(pwd):/source" undeadleech/vtebench "cd /source && $xvfb ./target/release/alacritty -e bash ./bench.sh $bench"
+    docker run -v "$(pwd):/source" undeadleech/vtebench "cd /source && $xvfb ./target/release/alacritty -e bash ./bench.sh $bench"
 done
 
 # XXX TODO FIXME Remove
