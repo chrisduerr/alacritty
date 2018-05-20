@@ -33,4 +33,4 @@ matrix:
 
 script:
   - if [[ -z "$DOCKER" ]]; then cargo test --no-default-features --features "$FEATURES"; fi
-  - if [[ -n "$DOCKER" ]]; then ./headless-bench.sh; fi
+  - if [[ -n "$DOCKER" ]]; then bash ./headless-bench.sh; fi

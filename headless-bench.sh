@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "Starting headless benchmarks"
+
 # Build the project to make `./target/release/alacritty` available
 cargo build --release
 
