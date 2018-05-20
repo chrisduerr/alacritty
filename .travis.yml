@@ -32,5 +32,5 @@ matrix:
     - rust: nightly
 
 script:
-  - cargo test --no-default-features --features "$FEATURES"
+  - if [[ -z "$DOCKER" ]]; then cargo test --no-default-features --features "$FEATURES"; fi
   - if [[ -n "$DOCKER" ]]; then ./headless-bench.sh; fi
