@@ -9,11 +9,11 @@ xvfb="xvfb-run -a -s '-screen 0 1920x1080x24'"
 # Format:
 #     "'name' 'num bytes'"
 benchmarks=(\
-    "'scrolling' '50000000' 'scrolling'" \
-    "'alt-screen-random-write' '250000000' 'alt-screen-random-write'" \
-    "'scrolling-in-region --lines-from-bottom 1' '50000000' 'scrolling-in-region-1'" \
-    "'scrolling-in-region --lines-from-bottom 50' '50000000' 'scrolling-in-region-50'" \
-    "'unicode-random-write' '4000000' 'unicode-random-write'")
+    "'scrolling' '5000000' 'scrolling'" \
+    "'alt-screen-random-write' '25000000' 'alt-screen-random-write'" \
+    "'scrolling-in-region --lines-from-bottom 1' '5000000' 'scrolling-in-region-1'" \
+    "'scrolling-in-region --lines-from-bottom 50' '5000000' 'scrolling-in-region-50'" \
+    "'unicode-random-write' '400000' 'unicode-random-write'")
 
 # Run all benchmarks with docker
 for i in ${!benchmarks[@]}
