@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Build the project to make `./target/release/alacritty` available
-# cargo build --release
+cargo build --release
 
 xvfb="xvfb-run -a -s '-screen 0 1920x1080x24'"
 
@@ -20,7 +20,8 @@ for i in ${!benchmarks[@]}
 do
     bench="${benchmarks[$i]}"
     echo "Running benchmark $bench"
-    sudo docker run -a STDERR -v "$(pwd):/source" undeadleech/vtebench \
-        "cd /source && $xvfb ./target/release/alacritty -e bash ./bench.sh $bench"
+    docker_id=$(sudo docker run -d -v "$(pwd):/source" undeadleech/vtebench \
+        "cd /source && $xvfb ./target/release/alacritty -e bash ./bench.sh $bench")
+    sudo docker wait $docker_id
 done
 
