@@ -12,7 +12,8 @@ benchmarks=(\
     "'scrolling' '50000000'" \
     "'alt-screen-random-write' '250000000'" \
     "'scrolling-in-region --lines-from-bottom 1' '50000000'" \
-    "'scrolling-in-region --lines-from-bottom 25' '50000000'")
+    "'scrolling-in-region --lines-from-bottom 25' '50000000'" \
+    "'unicode-random-write' '4000000'")
 
 # Run all benchmarks with docker
 for i in ${!benchmarks[@]}
