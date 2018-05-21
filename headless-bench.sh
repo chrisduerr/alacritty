@@ -25,3 +25,10 @@ do
     sudo docker wait $docker_id
 done
 
+
+find . -iname "*.json" | while read file
+do
+    echo "$file: "
+    cat "$file"
+done
+
