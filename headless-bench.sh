@@ -26,7 +26,7 @@ do
 done
 
 
-find . -iname "*.json" | while read file
+find . -maxdepth 1 -iname "*.json" | while read file
 do
     echo "$file: "
     cat "$file"
