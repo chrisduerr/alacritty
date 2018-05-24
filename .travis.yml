@@ -1,7 +1,5 @@
 language: rust
 cache: cargo
-service:
-  - docker
 
 notifications:
   webhooks:
@@ -24,7 +22,6 @@ rust:
 env:
   - FEATURES="clippy"
   - FEATURES=""
-  - DOCKER="true"
 
 matrix:
   fast_finish: true
@@ -33,16 +30,8 @@ matrix:
       env: FEATURES="clippy"
     - rust: nightly
       env: FEATURES=""
-    - rust: nightly
-      env: DOCKER="true"
-    - rust: stable
-      env: DOCKER="true"
-      os: osx
   allow_failures:
     - rust: nightly
 
-before_install:
-  - if [[ -n "$DOCKER" ]]; then docker pull undeadleech/vtebench; fi
 script:
-  - if [[ -z "$DOCKER" ]]; then cargo test --no-default-features --features "$FEATURES"; fi
-  - if [[ -n "$DOCKER" ]]; then bash ./headless-bench.sh; fi
+  - cargo test --no-default-features --features "$FEATURES"
