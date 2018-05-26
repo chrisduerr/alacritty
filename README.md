@@ -5,8 +5,8 @@ Alacritty
 
 Alacritty is the fastest terminal emulator in existence. Using the GPU for
 rendering enables optimizations that simply aren't possible in other emulators.
-Alacritty currently supports macOS and Linux, and Windows support is planned
-before the 1.0 release.
+Alacritty currently supports FreeBSD, Linux, macOS, and OpenBSD. Windows
+support is planned before the 1.0 release.
 
 <p align="center">
   <img width="600" alt="Alacritty running vim inside tmux" src="https://cloud.githubusercontent.com/assets/4285147/21585004/2ebd0288-d06c-11e6-95d3-4a2889dbbd6f.png">
@@ -158,6 +158,16 @@ missing, please open an issue.
 pkg install cmake freetype2 fontconfig xclip pkgconf
 ```
 
+#### OpenBSD
+
+Alacritty builds on OpenBSD 6.3 almost out-of-the-box if Rust and
+[Xenocara](https://xenocara.org) are installed.  If something is still found to
+be missing, please open an issue.
+
+```sh
+pkg_add rust
+```
+
 #### Solus
 
 On [Solus](https://solus-project.com/), you need a few extra libraries to build
@@ -293,7 +303,7 @@ echo "source ~/.bash_completion/alacritty" >> ~/.bashrc
 To install the completions for fish, run
 
 ```
-sudo cp alacritty-completions.fish /usr/share/fish/vendor_completions.d/alacritty.fish
+sudo cp alacritty-completions.fish $__fish_datadir/vendor_completions.d/alacritty.fish
 ```
 
 ## Configuration
