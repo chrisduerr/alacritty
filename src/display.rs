@@ -162,12 +162,17 @@ impl Display {
             let height = cell_height as u32 * dimensions.lines_u32();
 
             let new_viewport_size = Size {
-                width: Pixels(width + 2 * config.padding().x as u32),
-                height: Pixels(height + 2 * config.padding().y as u32),
+                width: Pixels(width + 2 * u32::from(config.padding().x)),
+                height: Pixels(height + 2 * u32::from(config.padding().y)),
             };
 
             window.set_inner_size(&new_viewport_size);
-            renderer.resize(new_viewport_size.width.0 as _, new_viewport_size.height.0 as _);
+            renderer.resize(
+                new_viewport_size.width.0 as _,
+                new_viewport_size.height.0 as _,
+                cell_width as _,
+                cell_height as _,
+            );
             viewport_size = new_viewport_size
         }
 
@@ -178,8 +183,8 @@ impl Display {
             height: viewport_size.height.0 as f32,
             cell_width: cell_width as f32,
             cell_height: cell_height as f32,
-            padding_x: config.padding().x as f32,
-            padding_y: config.padding().y as f32,
+            padding_x: f32::from(config.padding().x),
+            padding_y: f32::from(config.padding().y),
         };
 
         // Channel for resize events
@@ -238,8 +243,8 @@ impl Display {
         // font metrics should be computed before creating the window in the first
         // place so that a resize is not needed.
         let metrics = glyph_cache.font_metrics();
-        let cell_width = metrics.average_advance as f32 + font.offset().x as f32;
-        let cell_height = metrics.line_height as f32 + font.offset().y as f32;
+        let cell_width = metrics.average_advance as f32 + f32::from(font.offset().x);
+        let cell_height = metrics.line_height as f32 + f32::from(font.offset().y);
 
         // Prevent invalid cell sizes
         if cell_width < 1. || cell_height < 1. {
@@ -312,8 +317,11 @@ impl Display {
                 item.on_resize(size)
             }
 
+            let cw = self.size_info.cell_width as i32;
+            let ch = self.size_info.cell_height as i32;
+
             self.window.resize(w, h);
-            self.renderer.resize(w as i32, h as i32);
+            self.renderer.resize(w as i32, h as i32, cw, ch);
         }
 
     }
