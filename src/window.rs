@@ -183,17 +183,6 @@ impl From<glutin::ContextError> for Error {
     }
 }
 
-fn create_gl_window(
-    window: WindowBuilder,
-    event_loop: &EventsLoop,
-    srgb: bool,
-) -> ::std::result::Result<glutin::GlWindow, glutin::CreationError> {
-    let context = ContextBuilder::new()
-        .with_srgb(srgb)
-        .with_vsync(true);
-    ::glutin::GlWindow::new(window, context, event_loop)
-}
-
 impl Window {
     /// Create a new window
     ///
@@ -210,8 +199,9 @@ impl Window {
             .with_visibility(false)
             .with_transparency(true)
             .with_decorations(window_config.decorations());
-        let window = create_gl_window(window.clone(), &event_loop, false)
-            .or_else(|_| create_gl_window(window, &event_loop, true))?;
+        let context = ContextBuilder::new()
+            .with_vsync(true);
+        let window = ::glutin::GlWindow::new(window, context, &event_loop)?;
         window.show();
 
         // Text cursor

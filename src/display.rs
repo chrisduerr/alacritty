@@ -24,7 +24,6 @@ use config::Config;
 use font::{self, Rasterize};
 use meter::Meter;
 use renderer::{self, GlyphCache, QuadRenderer};
-use selection::Selection;
 use term::{Term, SizeInfo};
 
 use window::{self, Size, Pixels, Window, SetInnerSize};
@@ -178,8 +177,8 @@ impl Display {
             height: viewport_size.height.0 as f32,
             cell_width: cell_width as f32,
             cell_height: cell_height as f32,
-            padding_x: config.padding().x as f32,
-            padding_y: config.padding().y as f32,
+            padding_x: config.padding().x.floor(),
+            padding_y: config.padding().y.floor(),
         };
 
         // Channel for resize events
@@ -238,15 +237,10 @@ impl Display {
         // font metrics should be computed before creating the window in the first
         // place so that a resize is not needed.
         let metrics = glyph_cache.font_metrics();
-        let cell_width = metrics.average_advance as f32 + font.offset().x as f32;
-        let cell_height = metrics.line_height as f32 + font.offset().y as f32;
+        let cell_width = (metrics.average_advance + f64::from(font.offset().x)) as u32;
+        let cell_height = (metrics.line_height + f64::from(font.offset().y)) as u32;
 
-        // Prevent invalid cell sizes
-        if cell_width < 1. || cell_height < 1. {
-            panic!("font offset is too small");
-        }
-
-        Ok((glyph_cache, cell_width.floor(), cell_height.floor()))
+        Ok((glyph_cache, cell_width as f32, cell_height as f32))
     }
 
     pub fn update_glyph_cache(&mut self, config: &Config) {
@@ -323,7 +317,7 @@ impl Display {
     /// A reference to Term whose state is being drawn must be provided.
     ///
     /// This call may block if vsync is enabled
-    pub fn draw(&mut self, mut terminal: MutexGuard<Term>, config: &Config, selection: Option<&Selection>) {
+    pub fn draw(&mut self, mut terminal: MutexGuard<Term>, config: &Config) {
         // Clear dirty flag
         terminal.dirty = !terminal.visual_bell.completed();
 
@@ -371,7 +365,7 @@ impl Display {
 
                     // Draw the grid
                     api.render_cells(
-                        terminal.renderable_cells(config, selection, window_focused),
+                        terminal.renderable_cells(config, window_focused),
                         glyph_cache,
                     );
                 });

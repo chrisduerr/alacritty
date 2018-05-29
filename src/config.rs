@@ -82,26 +82,9 @@ pub struct Mouse {
     #[serde(default, deserialize_with = "failure_default")]
     pub triple_click: ClickHandler,
 
-    /// up/down arrows sent when scrolling in alt screen buffer
-    #[serde(deserialize_with = "deserialize_faux_scrollback_lines")]
-    #[serde(default="default_faux_scrollback_lines")]
-    pub faux_scrollback_lines: usize,
-}
-
-fn default_faux_scrollback_lines() -> usize {
-    1
-}
-
-fn deserialize_faux_scrollback_lines<'a, D>(deserializer: D) -> ::std::result::Result<usize, D::Error>
-    where D: de::Deserializer<'a>
-{
-    match usize::deserialize(deserializer) {
-        Ok(lines) => Ok(lines),
-        Err(err) => {
-            eprintln!("problem with config: {}; Using default value", err);
-            Ok(default_faux_scrollback_lines())
-        },
-    }
+    // TODO: DEPRECATED
+    #[serde(default)]
+    pub faux_scrollback_lines: Option<usize>,
 }
 
 impl Default for Mouse {
@@ -113,7 +96,7 @@ impl Default for Mouse {
             triple_click: ClickHandler {
                 threshold: Duration::from_millis(300),
             },
-            faux_scrollback_lines: 1,
+            faux_scrollback_lines: None,
         }
     }
 }
@@ -270,18 +253,18 @@ pub struct WindowConfig {
 
     /// Pixel padding
     #[serde(default="default_padding", deserialize_with = "deserialize_padding")]
-    padding: Delta<u8>,
+    padding: Delta,
 
     /// Draw the window with title bar / borders
     #[serde(default, deserialize_with = "failure_default")]
     decorations: bool,
 }
 
-fn default_padding() -> Delta<u8> {
-    Delta { x: 2, y: 2 }
+fn default_padding() -> Delta {
+    Delta { x: 2., y: 2. }
 }
 
-fn deserialize_padding<'a, D>(deserializer: D) -> ::std::result::Result<Delta<u8>, D::Error>
+fn deserialize_padding<'a, D>(deserializer: D) -> ::std::result::Result<Delta, D::Error>
     where D: de::Deserializer<'a>
 {
     match Delta::deserialize(deserializer) {
@@ -318,7 +301,7 @@ pub struct Config {
 
     /// Pixel padding
     #[serde(default, deserialize_with = "failure_default")]
-    padding: Option<Delta<u8>>,
+    padding: Option<Delta>,
 
     /// TERM env variable
     #[serde(default, deserialize_with = "failure_default")]
@@ -396,6 +379,10 @@ pub struct Config {
     /// Number of spaces in one tab
     #[serde(default="default_tabspaces", deserialize_with = "deserialize_tabspaces")]
     tabspaces: usize,
+
+    /// How much scrolling history to keep
+    #[serde(default, deserialize_with="failure_default")]
+    scrolling: Scrolling,
 }
 
 fn failure_default_vec<'a, D, T>(deserializer: D) -> ::std::result::Result<Vec<T>, D::Error>
@@ -479,6 +466,66 @@ impl Default for Config {
     }
 }
 
+/// Struct for scrolling related settings
+#[derive(Copy, Clone, Debug, Deserialize)]
+pub struct Scrolling {
+    #[serde(deserialize_with="deserialize_scrolling_history")]
+    #[serde(default="default_scrolling_history")]
+    pub history: u32,
+    #[serde(deserialize_with="deserialize_scrolling_multiplier")]
+    #[serde(default="default_scrolling_multiplier")]
+    pub multiplier: u8,
+    #[serde(deserialize_with="deserialize_scrolling_multiplier")]
+    #[serde(default="default_scrolling_multiplier")]
+    pub faux_multiplier: u8,
+    #[serde(default, deserialize_with="failure_default")]
+    pub auto_scroll: bool,
+}
+
+fn default_scrolling_history() -> u32 {
+    10_000
+}
+
+// Default for normal and faux scrolling
+fn default_scrolling_multiplier() -> u8 {
+    3
+}
+
+impl Default for Scrolling {
+    fn default() -> Self {
+        Self {
+            history: default_scrolling_history(),
+            multiplier: default_scrolling_multiplier(),
+            faux_multiplier: default_scrolling_multiplier(),
+            auto_scroll: false,
+        }
+    }
+}
+
+fn deserialize_scrolling_history<'a, D>(deserializer: D) -> ::std::result::Result<u32, D::Error>
+    where D: de::Deserializer<'a>
+{
+    match u32::deserialize(deserializer) {
+        Ok(lines) => Ok(lines),
+        Err(err) => {
+            eprintln!("problem with config: {}; Using default value", err);
+            Ok(default_scrolling_history())
+        },
+    }
+}
+
+fn deserialize_scrolling_multiplier<'a, D>(deserializer: D) -> ::std::result::Result<u8, D::Error>
+    where D: de::Deserializer<'a>
+{
+    match u8::deserialize(deserializer) {
+        Ok(lines) => Ok(lines),
+        Err(err) => {
+            eprintln!("problem with config: {}; Using default value", err);
+            Ok(default_scrolling_multiplier())
+        },
+    }
+}
+
 /// Newtype for implementing deserialize on glutin Mods
 ///
 /// Our deserialize impl wouldn't be covered by a derive(Deserialize); see the
@@ -544,7 +591,8 @@ impl<'a> de::Deserialize<'a> for ActionWrapper {
             type Value = ActionWrapper;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("Paste, Copy, PasteSelection, IncreaseFontSize, DecreaseFontSize, ResetFontSize, or Quit")
+                f.write_str("Paste, Copy, PasteSelection, IncreaseFontSize, DecreaseFontSize, \
+                            ResetFontSize, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom or Quit")
             }
 
             fn visit_str<E>(self, value: &str) -> ::std::result::Result<ActionWrapper, E>
@@ -557,6 +605,10 @@ impl<'a> de::Deserialize<'a> for ActionWrapper {
                     "IncreaseFontSize" => Action::IncreaseFontSize,
                     "DecreaseFontSize" => Action::DecreaseFontSize,
                     "ResetFontSize" => Action::ResetFontSize,
+                    "ScrollPageUp" => Action::ScrollPageUp,
+                    "ScrollPageDown" => Action::ScrollPageDown,
+                    "ScrollToTop" => Action::ScrollToTop,
+                    "ScrollToBottom" => Action::ScrollToBottom,
                     "Quit" => Action::Quit,
                     _ => return Err(E::invalid_value(Unexpected::Str(value), &self)),
                 }))
@@ -1017,24 +1069,6 @@ pub struct PrimaryColors {
     pub background: Rgb,
     #[serde(deserialize_with = "rgb_from_hex")]
     pub foreground: Rgb,
-    #[serde(default, deserialize_with = "deserialize_bright_foreground")]
-    pub bright_foreground: Option<Rgb>,
-}
-
-fn deserialize_bright_foreground<'a, D>(deserializer: D) -> ::std::result::Result<Option<Rgb>, D::Error>
-    where D: de::Deserializer<'a>
-{
-    match Option::deserialize(deserializer) {
-        Ok(Some(color)) => {
-            let color: serde_yaml::Value = color;
-            Ok(Some(rgb_from_hex(color).unwrap()))
-        },
-        Ok(None) => Ok(None),
-        Err(err) => {
-            eprintln!("problem with config: {}; Using standard foreground color", err);
-            Ok(None)
-        },
-    }
 }
 
 impl Default for PrimaryColors {
@@ -1042,7 +1076,6 @@ impl Default for PrimaryColors {
         PrimaryColors {
             background: Rgb { r: 0, g: 0, b: 0 },
             foreground: Rgb { r: 0xea, g: 0xea, b: 0xea },
-            bright_foreground: None,
         }
     }
 }
@@ -1304,7 +1337,7 @@ impl Config {
         self.tabspaces
     }
 
-    pub fn padding(&self) -> &Delta<u8> {
+    pub fn padding(&self) -> &Delta {
         self.padding.as_ref()
             .unwrap_or(&self.window.padding)
     }
@@ -1392,6 +1425,17 @@ impl Config {
         self.dynamic_title
     }
 
+    /// Scrolling settings
+    #[inline]
+    pub fn scrolling(&self) -> Scrolling {
+        self.scrolling
+    }
+
+    // Update the history size, used in ref tests
+    pub fn set_history(&mut self, history: u32) {
+        self.scrolling.history = history;
+    }
+
     pub fn load_from<P: Into<PathBuf>>(path: P) -> Result<Config> {
         let path = path.into();
         let raw = Config::read_file(path.as_path())?;
@@ -1423,6 +1467,11 @@ impl Config {
         if self.padding.is_some() {
             eprintln!("{}", fmt::Yellow("Config `padding` is deprecated. \
                                         Please use `window.padding` instead."));
+        }
+
+        if self.mouse.faux_scrollback_lines.is_some() {
+            println!("{}", fmt::Yellow("Config `mouse.faux_scrollback_lines` is deprecated. \
+                                        Please use `mouse.faux_scrolling_lines` instead."));
         }
     }
 }
@@ -1467,15 +1516,20 @@ impl Dimensions {
 }
 
 /// A delta for a point in a 2 dimensional plane
-#[derive(Clone, Copy, Debug, Default, Deserialize)]
-#[serde(bound(deserialize = "T: Deserialize<'de> + Default"))]
-pub struct Delta<T: Default> {
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct Delta {
     /// Horizontal change
     #[serde(default, deserialize_with = "failure_default")]
-    pub x: T,
+    pub x: f32,
     /// Vertical change
     #[serde(default, deserialize_with = "failure_default")]
-    pub y: T,
+    pub y: f32,
+}
+
+impl Default for Delta {
+    fn default() -> Delta {
+        Delta { x: 0.0, y: 0.0 }
+    }
 }
 
 trait DeserializeSize : Sized {
@@ -1553,11 +1607,11 @@ pub struct Font {
 
     /// Extra spacing per character
     #[serde(default, deserialize_with = "failure_default")]
-    offset: Delta<i8>,
+    offset: Delta,
 
     /// Glyph offset within character cell
     #[serde(default, deserialize_with = "failure_default")]
-    glyph_offset: Delta<i8>,
+    glyph_offset: Delta,
 
     #[serde(default="true_bool", deserialize_with = "default_true_bool")]
     use_thin_strokes: bool
@@ -1596,13 +1650,13 @@ impl Font {
 
     /// Get offsets to font metrics
     #[inline]
-    pub fn offset(&self) -> &Delta<i8> {
+    pub fn offset(&self) -> &Delta {
         &self.offset
     }
 
     /// Get cell offsets for glyphs
     #[inline]
-    pub fn glyph_offset(&self) -> &Delta<i8> {
+    pub fn glyph_offset(&self) -> &Delta {
         &self.glyph_offset
     }
 
@@ -1897,7 +1951,6 @@ enum Key {
     WebSearch,
     WebStop,
     Yen,
-    Caret,
 }
 
 impl Key {
@@ -2055,7 +2108,6 @@ impl Key {
             Key::WebSearch => WebSearch,
             Key::WebStop => WebStop,
             Key::Yen => Yen,
-            Key::Caret => Caret,
         }
     }
 }

@@ -123,8 +123,8 @@ pub struct ShaderProgram {
     /// Rendering is split into two passes; 1 for backgrounds, and one for text
     u_background: GLint,
 
-    padding_x: u8,
-    padding_y: u8,
+    padding_x: f32,
+    padding_y: f32,
 }
 
 
@@ -165,7 +165,7 @@ pub struct GlyphCache {
     font_size: font::Size,
 
     /// glyph offset
-    glyph_offset: Delta<i8>,
+    glyph_offset: Delta,
 
     metrics: ::font::Metrics,
 }
@@ -1017,8 +1017,8 @@ impl ShaderProgram {
             u_cell_dim: cell_dim,
             u_visual_bell: visual_bell,
             u_background: background,
-            padding_x: config.padding().x,
-            padding_y: config.padding().y,
+            padding_x: config.padding().x.floor(),
+            padding_y: config.padding().y.floor(),
         };
 
         shader.update_projection(*size.width as f32, *size.height as f32);
@@ -1041,8 +1041,8 @@ impl ShaderProgram {
         // NB Not sure why padding change only requires changing the vertical
         //    translation in the projection, but this makes everything work
         //    correctly.
-        let ortho = cgmath::ortho(0., width - 2. * self.padding_x as f32, 2. * self.padding_y as f32,
-            height, -1., 1.);
+        let ortho = cgmath::ortho(0., width - 2. * self.padding_x, 2. * self.padding_y, height,
+            -1., 1.);
         let projection: [[f32; 4]; 4] = ortho.into();
 
         info!("width: {}, height: {}", width, height);
@@ -1348,11 +1348,11 @@ impl Atlas {
     }
 
     /// Insert a RasterizedGlyph into the texture atlas
-    pub fn insert(&mut self,
-                  glyph: &RasterizedGlyph,
-                  active_tex: &mut u32)
-                  -> Result<Glyph, AtlasInsertError>
-    {
+    pub fn insert(
+        &mut self,
+        glyph: &RasterizedGlyph,
+        active_tex: &mut u32
+    ) -> Result<Glyph, AtlasInsertError> {
         if glyph.width > self.width || glyph.height > self.height {
             return Err(AtlasInsertError::GlyphTooLarge);
         }
@@ -1376,11 +1376,7 @@ impl Atlas {
     /// Internal function for use once atlas has been checked for space. GL
     /// errors could still occur at this point if we were checking for them;
     /// hence, the Result.
-    fn insert_inner(&mut self,
-                    glyph: &RasterizedGlyph,
-                    active_tex: &mut u32)
-                    -> Glyph
-    {
+    fn insert_inner(&mut self, glyph: &RasterizedGlyph, active_tex: &mut u32) -> Glyph {
         let offset_y = self.row_baseline;
         let offset_x = self.row_extent;
         let height = glyph.height as i32;

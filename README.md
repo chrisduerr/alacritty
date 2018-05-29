@@ -119,7 +119,6 @@ missing, please open an issue.
 
 ```sh
 yum install cmake freetype-devel fontconfig-devel xclip
-yum group install "Development Tools"
 ```
 
 #### openSUSE
@@ -205,9 +204,7 @@ If you have a rust toolchain setup you can install Alacritty via cargo:
 cargo install --git https://github.com/jwilm/alacritty
 ```
 
-Note that you still need to download system build dependencies via your package
-manager as mentioned above. The binary `alacritty` will be placed into `$HOME/.cargo/bin`.
-Make sure it is in your path (default if you use `rustup`).
+Note that you still need to download system build dependencies via your package manager as mentioned above. The binary `alacritty` will be placed into `$HOME/.cargo/bin`. Make sure it is in your path (default if you use `rustup`).
 
 #### Other
 
@@ -216,11 +213,6 @@ filling in this section of the README.
 
 ### Building
 
-**BEFORE YOU RUN IT:** Install the config file as described below; otherwise,
-many things (such as arrow keys) will not work.
-
-#### Linux
-
 Once all the prerequisites are installed, compiling Alacritty should be easy:
 
 ```sh
@@ -228,8 +220,10 @@ cargo build --release
 ```
 
 If all goes well, this should place a binary at `target/release/alacritty`.
+**BEFORE YOU RUN IT:** Install the config file as described below; otherwise,
+many things (such as arrow keys) will not work.
 
-##### Desktop Entry
+### Desktop Entry
 
 Many linux distributions support desktop entries for adding applications to
 system menus. To install the desktop entry for Alacritty, run
@@ -239,8 +233,6 @@ sudo cp target/release/alacritty /usr/local/bin # or anywhere else in $PATH
 cp Alacritty.desktop ~/.local/share/applications
 ```
 
-#### MacOS
-
 To build an application for macOS, run
 
 ```sh
@@ -248,60 +240,12 @@ make app
 cp -r target/release/osx/Alacritty.app /Applications/
 ```
 
-## Manual Page
-
-Installing the manual page requires the additional dependency `gzip`.
-To install the manual page, run
-
-```sh
-sudo mkdir -p /usr/local/share/man/man1
-gzip -c alacritty.man | sudo tee /usr/local/share/man/man1/alacritty.1.gz > /dev/null
-```
-
-## Shell completions
-
-To get automatic completions for alacritty's flags and arguments you can install the provided shell completions.
-
-### Zsh
-
-To install the completions for zsh, run
-
-```
-sudo cp alacritty-completions.zsh /usr/share/zsh/functions/Completion/X/_alacritty
-```
-
-### Bash
-
-To install the completions for bash, you can `source` the `alacritty-completions.bash` in your `~/.bashrc` file.
-
-If you do not plan to delete the source folder of alacritty, you can run
-
-```sh
-echo "source $(pwd)/alacritty-completions.bash" >> ~/.bashrc
-```
-
-Otherwise you can copy it to the `~/.bash_completion` folder and source it from there:
-
-```sh
-mkdir -p ~/.bash_completion
-cp alacritty-completions.bash ~/.bash_completion/alacritty
-echo "source ~/.bash_completion/alacritty" >> ~/.bashrc
-```
-
-### Fish
-
-To install the completions for fish, run
-
-```
-sudo cp alacritty-completions.fish /usr/share/fish/vendor_completions.d/alacritty.fish
-```
-
 ## Configuration
 
 Although it's possible the default configuration would work on your system,
 you'll probably end up wanting to customize it anyhow. There is a default
 `alacritty.yml` and `alacritty_macos.yml` at the git repository root for
-Linux and macOS respectively.
+Linux and macOS repsectively.
 
 Alacritty looks for the configuration file at the following paths:
 
@@ -330,35 +274,24 @@ Just Works.
 
 ## FAQ
 
-- **_Is it really the fastest terminal emulator?_**
-
-  In the terminals I've benchmarked against, alacritty is either faster, WAY
-  faster, or at least neutral. There are no benchmarks in which I've found
-  Alacritty to be slower.
-
-- **_macOS + tmux + vim is slow! I thought this was supposed to be fast!_**
-
-  This appears to be an issue outside of terminal emulators; either macOS has an
-  IPC performance issue, or either tmux or vim (or both) have a bug. This same
-  issue can be seen in `iTerm2` and `Terminal.app`. I've found that if tmux is
-  running on another machine which is connected to Alacritty via SSH, this issue
+- _Is it really the fastest terminal emulator?_ In the terminals I've
+  benchmarked against, alacritty is either faster, WAY faster, or at least
+  neutral. There are no benchmarks in which I've found Alacritty to be slower.
+- _macOS + tmux + vim is slow! I thought this was supposed to be fast!_ This
+  appears to be an issue outside of terminal emulators; either macOS has an IPC
+  performance issue, or either tmux or vim (or both) have a bug. This same issue
+  can be seen in `iTerm2` and `Terminal.app`. I've found that if tmux is running
+  on another machine which is connected to Alacritty via SSH, this issue
   disappears. Actual throughput and rendering performance are still better in
   Alacritty.
-
-- **_When will Windows support be available?_**
-
-  When someone has time to work on it. Contributors would be welcomed :).
-
-- **_My arrow keys don't work._**
-
-  It sounds like you deleted some key bindings from your config file. Please
-  reference the default config file to restore them.
-
-- **_Why doesn't it support scrollback?_**
-
-  Alacritty's original purpose was to provide a better experience when using
-  [tmux] which already handled scrollback. The scope of this project has since
-  expanded, and [scrollback will eventually be added](https://github.com/jwilm/alacritty/issues/124).
+- _When will Windows support be available?_ When someone has time to work on it.
+  Contributors would be welcomed :).
+- _My arrow keys don't work_. It sounds like you deleted some key bindings from
+  your config file. Please reference the default config file to restore them.
+- _Why doesn't it support scrollback?_ Alacritty's original purpose was to
+  provide a better experience when using [tmux] which already handled
+  scrollback. The scope of this project has since expanded, and [scrollback will
+  eventually be added](https://github.com/jwilm/alacritty/issues/124).
 
 ## IRC
 
