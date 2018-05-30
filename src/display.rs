@@ -205,7 +205,7 @@ impl Display {
             renderer,
             glyph_cache,
             render_timer,
-            file: OpenOptions::new().append(true).open("/tmp/render_timer").unwrap(),
+            file: OpenOptions::new().append(true).create(true).open("/tmp/render_timer").unwrap(),
             tx,
             rx,
             meter: Meter::new(),
