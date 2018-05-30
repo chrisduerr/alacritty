@@ -381,6 +381,9 @@ impl Display {
                 });
             }
 
+            if self.meter.average() < 10. {
+                panic!("NOT A LOT OF TIME TO REDRAW! {:?}", self.meter.average());
+            }
             // Draw render timer
             if self.render_timer {
                 let timing = format!("{:.3} usec", self.meter.average());
