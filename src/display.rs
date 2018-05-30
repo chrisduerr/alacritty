@@ -26,6 +26,8 @@ use meter::Meter;
 use renderer::{self, GlyphCache, QuadRenderer};
 use selection::Selection;
 use term::{Term, SizeInfo};
+use std::io::Write;
+use std::fs::{OpenOptions, File};
 
 use window::{self, Size, Pixels, Window, SetInnerSize};
 
@@ -93,6 +95,7 @@ pub struct Display {
     renderer: QuadRenderer,
     glyph_cache: GlyphCache,
     render_timer: bool,
+    file: File,
     rx: mpsc::Receiver<(u32, u32)>,
     tx: mpsc::Sender<(u32, u32)>,
     meter: Meter,
@@ -202,6 +205,7 @@ impl Display {
             renderer,
             glyph_cache,
             render_timer,
+            file: OpenOptions::new().append(true).open("/tmp/render_timer").unwrap(),
             tx,
             rx,
             meter: Meter::new(),
@@ -384,6 +388,8 @@ impl Display {
                 self.renderer.with_api(config, &size_info, visual_bell_intensity, |mut api| {
                     api.render_string(&timing[..], glyph_cache, color);
                 });
+
+                self.file.write_all(&timing.into_bytes());
             }
         }
 
