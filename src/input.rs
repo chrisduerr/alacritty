@@ -754,6 +754,7 @@ mod tests {
                             threshold: Duration::from_millis(1000),
                         },
                         faux_scrollback_lines: 1,
+                        ignore_first_click_on_unfocused_window: true,
                     },
                     key_bindings: &config.key_bindings()[..],
                     mouse_bindings: &config.mouse_bindings()[..],

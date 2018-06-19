@@ -87,6 +87,10 @@ pub struct Mouse {
     #[serde(deserialize_with = "deserialize_faux_scrollback_lines")]
     #[serde(default="default_faux_scrollback_lines")]
     pub faux_scrollback_lines: usize,
+
+    /// Ignore first click on unfocused window
+    #[serde(default, deserialize_with = "failure_default")]
+    pub ignore_first_click_on_unfocused_window: bool,
 }
 
 fn default_faux_scrollback_lines() -> usize {
@@ -115,6 +119,7 @@ impl Default for Mouse {
                 threshold: Duration::from_millis(300),
             },
             faux_scrollback_lines: 1,
+            ignore_first_click_on_unfocused_window: true,
         }
     }
 }

@@ -201,6 +201,9 @@ mouse:
   # To disable this completely, set `faux_scrollback_lines` to 0.
   faux_scrollback_lines: 1
 
+  # Ignore first click on unfocused windows
+  ignore_first_click_on_unfocused_window: true
+
 selection:
   semantic_escape_chars: ",│`|:\"' ()[]{}<>"
 
