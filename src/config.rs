@@ -1346,7 +1346,7 @@ impl Config {
     /// Should show render timer
     #[inline]
     pub fn render_timer(&self) -> bool {
-        self.render_timer
+        true
     }
 
     #[inline]
