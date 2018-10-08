@@ -1,6 +1,6 @@
 [package]
 name = "alacritty"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Joe Wilm <joe@jwilm.com>"]
 license = "Apache-2.0"
 build = "build.rs"
@@ -53,14 +53,20 @@ default = []
 # Enabling this feature makes shaders automatically reload when changed
 live-shader-reload = []
 nightly = []
-bench = []
 
 [build-dependencies]
 gl_generator = "0.9"
 
+[dev-dependencies]
+criterion = { version = "0.2.5", features=['real_blackbox'] }
+
 [profile.release]
 lto = true
 debug = 1
+
+[[bench]]
+name = "bench"
+harness = false
 
 [package.metadata.deb]
 maintainer = "Joe Wilm <joe@jwilm.com>"
@@ -81,3 +87,6 @@ assets = [
     ["alacritty-completions.zsh", "usr/share/zsh/vendor-completions/_alacritty", "644"],
     ["alacritty.info", "usr/share/terminfo/a/alacritty", "644"],
 ]
+
+[patch.crates-io]
+servo-freetype-sys = { path = "servo-freetype-proxy" }

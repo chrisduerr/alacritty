@@ -372,6 +372,7 @@ impl<'a> RenderableCellsIter<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct RenderableCell {
     /// A _Display_ line (not necessarily an _Active_ line)
     pub line: Line,
@@ -1045,6 +1046,11 @@ impl Term {
     /// serializes the grid state to a file.
     pub fn grid(&self) -> &Grid<Cell> {
         &self.grid
+    }
+
+    /// Mutable access to the raw grid data structure
+    pub fn grid_mut(&mut self) -> &mut Grid<Cell> {
+        &mut self.grid
     }
 
     /// Iterate over the *renderable* cells in the terminal
@@ -2227,67 +2233,5 @@ mod tests {
         let mut scrolled_grid = term.grid.clone();
         scrolled_grid.scroll_display(Scroll::Top);
         assert_eq!(term.grid, scrolled_grid);
-    }
-}
-
-#[cfg(all(test, feature = "bench"))]
-mod benches {
-    extern crate test;
-    extern crate serde_json as json;
-
-    use std::io::Read;
-    use std::fs::File;
-    use std::mem;
-    use std::path::Path;
-
-    use grid::Grid;
-    use config::Config;
-
-    use super::{SizeInfo, Term};
-    use super::cell::Cell;
-
-    fn read_string<P>(path: P) -> String
-        where P: AsRef<Path>
-    {
-        let mut res = String::new();
-        File::open(path.as_ref()).unwrap()
-            .read_to_string(&mut res).unwrap();
-
-        res
-    }
-
-    /// Benchmark for the renderable cells iterator
-    ///
-    /// The renderable cells iterator yields cells that require work to be
-    /// displayed (that is, not a an empty background cell). This benchmark
-    /// measures how long it takes to process the whole iterator.
-    ///
-    /// When this benchmark was first added, it averaged ~78usec on my macbook
-    /// pro. The total render time for this grid is anywhere between ~1500 and
-    /// ~2000usec (measured imprecisely with the visual meter).
-    #[bench]
-    fn render_iter(b: &mut test::Bencher) {
-        // Need some realistic grid state; using one of the ref files.
-        let serialized_grid = read_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/ref/vim_large_window_scroll/grid.json")
-        );
-        let serialized_size = read_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/ref/vim_large_window_scroll/size.json")
-        );
-
-        let mut grid: Grid<Cell> = json::from_str(&serialized_grid).unwrap();
-        let size: SizeInfo = json::from_str(&serialized_size).unwrap();
-
-        let config = Config::default();
-
-        let mut terminal = Term::new(&config, size);
-        mem::swap(&mut terminal.grid, &mut grid);
-
-        b.iter(|| {
-            let iter = terminal.renderable_cells(&config, false);
-            for cell in iter {
-                test::black_box(cell);
-            }
-        })
     }
 }
