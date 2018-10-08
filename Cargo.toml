@@ -58,7 +58,7 @@ nightly = []
 gl_generator = "0.9"
 
 [dev-dependencies]
-criterion = "0.2.5"
+criterion = { version = "0.2.5", features=['real_blackbox'] }
 
 [profile.release]
 lto = true

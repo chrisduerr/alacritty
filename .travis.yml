@@ -32,3 +32,5 @@ script:
   - if [ -n "$CLIPPY" ]; then cargo clippy --all-features --all-targets; fi
   - if [ -z "$CLIPPY" ]; then cargo test; fi
   - if [ -z "$CLIPPY" ]; then cargo test -p font; fi
+  - if [ -z "$CLIPPY" ]; then cargo test -p copypasta; fi
+  - if [ -z "$CLIPPY" ]; then cargo bench; fi
