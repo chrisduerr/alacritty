@@ -1,6 +1,6 @@
 [package]
 name = "alacritty"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Joe Wilm <joe@jwilm.com>"]
 license = "Apache-2.0"
 build = "build.rs"
@@ -40,6 +40,7 @@ env_logger = "0.5"
 base64 = "0.9.0"
 static_assertions = "0.2.5"
 terminfo = "0.6.1"
+criterion = { git = "https://github.com/chrisduerr/criterion.rs", features = ["real_blackbox"], optional = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os="dragonfly", target_os="openbsd"))'.dependencies]
 x11-dl = "2"
@@ -53,10 +54,14 @@ default = []
 # Enabling this feature makes shaders automatically reload when changed
 live-shader-reload = []
 nightly = []
-bench = []
+bench = ["criterion"]
 
 [build-dependencies]
 gl_generator = "0.9"
+
+[[bench]]
+name = "bench"
+harness = false
 
 [profile.release]
 lto = true
@@ -81,3 +86,6 @@ assets = [
     ["alacritty-completions.zsh", "usr/share/zsh/vendor-completions/_alacritty", "644"],
     ["alacritty.info", "usr/share/terminfo/a/alacritty", "644"],
 ]
+
+[patch.crates-io]
+servo-freetype-sys = { path = "servo-freetype-proxy" }
