@@ -36,8 +36,8 @@ matrix:
 script:
   - if [ "$TRAVIS_OS_NAME" == "windows" ]; then choco install llvm --norestart --nosilent; fi
   - if [ -n "$CLIPPY" ]; then cargo clippy --all-features --all-targets; fi
-  - if [ -z "$CLIPPY" ] && [ -n "$TRAVIS_TAG"]; then cargo test --release; fi
-  - if [ -z "$CLIPPY" ] && [ -z "$TRAVIS_TAG"]; then cargo test; fi
+  - if [ -z "$CLIPPY" ] && [ -n "$TRAVIS_TAG" ]; then cargo test --release; fi
+  - if [ -z "$CLIPPY" ] && [ -z "$TRAVIS_TAG" ]; then cargo test; fi
   - if [ -z "$CLIPPY" ]; then cargo test -p font; fi
 
 before_deploy:
