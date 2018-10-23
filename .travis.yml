@@ -40,18 +40,22 @@ script:
   - if [ -z "$CLIPPY" ]; then cargo test -p font; fi
 
 before_deploy:
+  - ARCH=$(uname -m)
+  - cargo build --release
   - mkdir "target/deploy"
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       make dmg
       mv "target/release/osx/Alacritty.dmg" "target/deploy/Alacritty-$TRAVIS_TAG.dmg"
     fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
-      cargo install cargo-deb;
-      cargo build --release;
+      cargo install cargo-deb
       DEB=$(cargo deb --no-build)
-      ARCH=$(uname -m)
       mv "target/release/alacritty" "target/deploy/Alacritty-$TRAVIS_TAG-$ARCH"
       mv "$DEB" "target/deploy/Alacritty-$TRAVIS_TAG-$ARCH.deb"
+    fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then
+      mv "target/release/alacritty.exe" "target/deploy/Alacritty-$TRAVIS_TAG-$ARCH.exe"
+      mv "target/release/winpty-agent.exe" "target/deploy/winpty-agent.exe"
     fi
 
 deploy:
