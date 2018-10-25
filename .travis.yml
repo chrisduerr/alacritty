@@ -1,5 +1,9 @@
 language: rust
 
+env:
+  global:
+    - CXX: /usr/bin/g++
+
 git:
   depth: 1
 
