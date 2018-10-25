@@ -19,16 +19,21 @@ matrix:
     - rust: nightly
       os: linux
       env: CLIPPY=true
+      env: TARGET=x86_64-unknown-linux-gnu
     - rust: stable
       os: osx
+      env: TARGET=x86_64-apple-darwin
     - rust: nightly
       os: osx
       env: CLIPPY=true
+      env: TARGET=x86_64-apple-darwin
     - rust: stable
       os: windows
+      env: TARGET=x86_64-pc-windows-msvc
     - rust: nightly
       os: windows
       env: CLIPPY=true
+      env: TARGET=x86_64-pc-windows-msvc
   allow_failures:
     - rust: nightly
     - os: windows
@@ -38,10 +43,10 @@ install:
   - if [ -n "$CLIPPY" ]; then rustup component add clippy-preview; fi
 
 script:
-  - if [ -n "$CLIPPY" ]; then cargo clippy --all-features --all-targets; fi
-  - if [ -z "$CLIPPY" ] && [ -n "$TRAVIS_TAG" ]; then cargo test --release; fi
-  - if [ -z "$CLIPPY" ] && [ -z "$TRAVIS_TAG" ]; then cargo test; fi
-  - if [ -z "$CLIPPY" ]; then cargo test -p font; fi
+  - if [ -n "$CLIPPY" ]; then cargo clippy --target $TARGET --all-features --all-targets; fi
+  - if [ -z "$CLIPPY" ] && [ -n "$TRAVIS_TAG" ]; then cargo test --target $TARGET --release; fi
+  - if [ -z "$CLIPPY" ] && [ -z "$TRAVIS_TAG" ]; then cargo test --target $TARGET; fi
+  - if [ -z "$CLIPPY" ]; then cargo test --target $TARGET -p font; fi
 
 before_deploy:
   - ARCH=$(uname -m)
