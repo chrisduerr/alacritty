@@ -41,6 +41,7 @@ matrix:
 install:
   - if [ "$TRAVIS_OS_NAME" == "windows" ]; then choco install llvm --norestart --nosilent; fi
   - if [ -n "$CLIPPY" ]; then rustup component add clippy-preview; fi
+  - rustup target add $TARGET
 
 script:
   - if [ -n "$CLIPPY" ]; then cargo clippy --target $TARGET --all-features --all-targets; fi
