@@ -5,8 +5,9 @@ git:
 
 addons:
   apt:
-    # For building MUSL static builds on Linux
-    - musl-tools
+    packages:
+      # For building MUSL static builds on Linux
+      - musl-tools
 
 matrix:
   fast_finish: true
