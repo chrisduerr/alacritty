@@ -3,53 +3,24 @@ language: rust
 git:
   depth: 1
 
+os:
+  - linux
+  - osx
+  - windows
+
+rust:
+  - stable
+  - nightly
+
 matrix:
   fast_finish: true
-  include:
-    - rust: stable
-      os: linux
-    - rust: nightly
-      os: linux
-      env: CLIPPY=true
-    - rust: stable
-      os: osx
-    - rust: nightly
-      os: osx
-      env: CLIPPY=true
-    - rust: stable
-      os: windows
-    - rust: nightly
-      os: windows
-      env: CLIPPY=true
   allow_failures:
     - rust: nightly
     - os: windows
 
-install:
-  - if [ "$TRAVIS_OS_NAME" == "windows" ]; then choco install llvm --norestart --nosilent; fi
-  - if [ -n "$CLIPPY" ]; then rustup component add clippy-preview; fi
-
-script:
-  - if [ -n "$CLIPPY" ]; then cargo clippy --all-features --all-targets; fi
-  - if [ -z "$CLIPPY" ] && [ -n "$TRAVIS_TAG" ]; then cargo test --release; fi
-  - if [ -z "$CLIPPY" ] && [ -z "$TRAVIS_TAG" ]; then cargo test; fi
-  - if [ -z "$CLIPPY" ]; then cargo test -p font; fi
-
-before_deploy:
-  - mkdir "./target/deploy"
-  - if [ "$TRAVIS_OS_NAME" == "osx" ]; then
-      make dmg;
-      mv "./target/release/osx/Alacritty.dmg" "./target/deploy/Alacritty-${TRAVIS_TAG}.dmg";
-    fi
-  - if [ "$TRAVIS_OS_NAME" == "linux" ]; then
-      cargo install cargo-deb;
-      DEB=$(cargo deb --no-build);
-      mv "$DEB" "./target/deploy/Alacritty-${TRAVIS_TAG}_amd64.deb";
-    fi
-  - if [ "$TRAVIS_OS_NAME" == "windows" ]; then
-      mv "./target/release/alacritty.exe" "./target/deploy/Alacritty-${TRAVIS_TAG}.exe";
-      mv "./target/release/winpty-agent.exe" "./target/deploy/winpty-agent.exe";
-    fi
+install: ci/install.sh
+script: ci/script.sh
+before_deploy: ci/before_deploy.sh
 
 deploy:
   provider: releases
