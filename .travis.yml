@@ -1,43 +1,26 @@
 language: rust
 
-env:
-  global:
-    - CXX: /usr/bin/g++
-
 git:
   depth: 1
-
-addons:
-  apt:
-    packages:
-      # For building MUSL static builds on Linux
-      - musl-tools
 
 matrix:
   fast_finish: true
   include:
     - rust: stable
       os: linux
-      # Use MUSL so resulting binaries can be shared
-      env: TARGET=x86_64-unknown-linux-musl
     - rust: nightly
       os: linux
       env: CLIPPY=true
-      env: TARGET=x86_64-unknown-linux-gnu
     - rust: stable
       os: osx
-      env: TARGET=x86_64-apple-darwin
     - rust: nightly
       os: osx
       env: CLIPPY=true
-      env: TARGET=x86_64-apple-darwin
     - rust: stable
       os: windows
-      env: TARGET=x86_64-pc-windows-msvc
     - rust: nightly
       os: windows
       env: CLIPPY=true
-      env: TARGET=x86_64-pc-windows-msvc
   allow_failures:
     - rust: nightly
     - os: windows
@@ -45,16 +28,14 @@ matrix:
 install:
   - if [ "$TRAVIS_OS_NAME" == "windows" ]; then choco install llvm --norestart --nosilent; fi
   - if [ -n "$CLIPPY" ]; then rustup component add clippy-preview; fi
-  - rustup target add $TARGET
 
 script:
-  - if [ -n "$CLIPPY" ]; then cargo clippy --target $TARGET --all-features --all-targets; fi
-  - if [ -z "$CLIPPY" ] && [ -n "$TRAVIS_TAG" ]; then cargo test --target $TARGET --release; fi
-  - if [ -z "$CLIPPY" ] && [ -z "$TRAVIS_TAG" ]; then cargo test --target $TARGET; fi
-  - if [ -z "$CLIPPY" ]; then cargo test --target $TARGET -p font; fi
+  - if [ -n "$CLIPPY" ]; then cargo clippy --all-features --all-targets; fi
+  - if [ -z "$CLIPPY" ] && [ -n "$TRAVIS_TAG" ]; then cargo test --release; fi
+  - if [ -z "$CLIPPY" ] && [ -z "$TRAVIS_TAG" ]; then cargo test; fi
+  - if [ -z "$CLIPPY" ]; then cargo test -p font; fi
 
 before_deploy:
-  - ARCH=$(uname -m)
   - mkdir "./target/deploy"
   - if [ "$TRAVIS_OS_NAME" == "osx" ]; then
       make dmg;
@@ -63,11 +44,10 @@ before_deploy:
   - if [ "$TRAVIS_OS_NAME" == "linux" ]; then
       cargo install cargo-deb;
       DEB=$(cargo deb --no-build);
-      mv "./target/release/alacritty" "./target/deploy/Alacritty-$TRAVIS_TAG-$ARCH";
-      mv "$DEB" "./target/deploy/Alacritty-$TRAVIS_TAG-$ARCH.deb";
+      mv "$DEB" "./target/deploy/Alacritty-$TRAVIS_TAG_amd64.deb";
     fi
   - if [ "$TRAVIS_OS_NAME" == "windows" ]; then
-      mv "./target/release/alacritty.exe" "./target/deploy/Alacritty-$TRAVIS_TAG-$ARCH.exe";
+      mv "./target/release/alacritty.exe" "./target/deploy/Alacritty-$TRAVIS_TAG.exe";
       mv "./target/release/winpty-agent.exe" "./target/deploy/winpty-agent.exe";
     fi
 
