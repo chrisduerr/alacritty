@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # All files which should be added only if they changed
-aux_files=("alacritty-completions.bash" \
-           "alacritty-completions.fish" \
-           "alacritty-completions.zsh" \
-           "alacritty.desktop" \
-           "alacritty.info" \
-           "alacritty.yml" \
-           "alacritty_macos.yml" \
+aux_files=("alacritty-completions.bash"
+           "alacritty-completions.fish"
+           "alacritty-completions.zsh"
+           "alacritty.desktop"
+           "alacritty.info"
+           "alacritty.yml"
+           "alacritty_macos.yml"
            "alacritty_windows.yml")
 
 # Get previous tag to check for changes
@@ -43,7 +43,7 @@ if [ -n "$(git diff $prev_tag HEAD alacritty.man)" ]; then
 fi
 
 # Offer extra files if they changed
-for file in $aux_files; do
+for file in "${aux_files[@]}"; do
     if [ -n "$(git diff $prev_tag HEAD $file)" ]; then
         cp $file "./target/deploy/"
     fi
