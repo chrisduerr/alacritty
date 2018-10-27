@@ -210,10 +210,8 @@ visual_bell:
   animation: EaseOutExpo
   duration: 0
 
-# Background opacity
 background_opacity: 1.0
 
-# Mouse bindings
 mouse_bindings:
   - { mouse: Middle, action: PasteSelection }
 
