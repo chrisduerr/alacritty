@@ -11,7 +11,7 @@ aux_files=("alacritty-completions.bash"
            "alacritty_windows.yml")
 
 # Get previous tag to check for changes
-prev_tag=$(git describe --abbrev=0 $TRAVIS_TAG^)
+prev_tag=$(git describe --tags --abbrev=0 $TRAVIS_TAG^)
 
 # Everything in this directory will be offered as download for the release
 mkdir "./target/deploy"

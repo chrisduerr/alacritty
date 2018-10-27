@@ -217,17 +217,6 @@ background_opacity: 1.0
 #
 # Currently doesn't support modifiers. Both the `mouse` and `action` fields must
 # be specified.
-#
-# Values for `mouse`:
-# - Middle
-# - Left
-# - Right
-# - Numeric identifier such as `5`
-#
-# Values for `action`:
-# - Paste
-# - PasteSelection
-# - Copy (TODO)
 mouse_bindings:
   - { mouse: Middle, action: PasteSelection }
 
