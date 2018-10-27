@@ -45,6 +45,9 @@ fi
 # Offer extra files if they changed
 for file in $aux_files; do
     if [ -n "$(git diff $prev_tag HEAD $file)" ]; then
+        echo "COPYING -$file-"
         cp $file "./target/deploy/"
+    else
+        echo "-$file- is unchanged"
     fi
 done
