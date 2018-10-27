@@ -12,6 +12,7 @@ aux_files=("alacritty-completions.bash"
 
 # Get previous tag to check for changes
 git fetch --tags
+git fetch --unshallow
 prev_tag=$(git describe --tags --abbrev=0 $TRAVIS_TAG^)
 
 # Everything in this directory will be offered as download for the release
