@@ -190,11 +190,6 @@ colors:
 # rung, the terminal background will be set to white and transition back to the
 # default background color. You can control the rate of this transition by
 # setting the `duration` property (represented in milliseconds). You can also
-# configure the transition function by setting the `animation` property.
-#
-# Possible values for `animation`
-#
-# To completely disable the visual bell, set its duration to 0.
 #
 visual_bell:
   animation: EaseOutExpo
