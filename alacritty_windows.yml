@@ -193,16 +193,6 @@ colors:
 # configure the transition function by setting the `animation` property.
 #
 # Possible values for `animation`
-# `Ease`
-# `EaseOut`
-# `EaseOutSine`
-# `EaseOutQuad`
-# `EaseOutCubic`
-# `EaseOutQuart`
-# `EaseOutQuint`
-# `EaseOutExpo`
-# `EaseOutCirc`
-# `Linear`
 #
 # To completely disable the visual bell, set its duration to 0.
 #
