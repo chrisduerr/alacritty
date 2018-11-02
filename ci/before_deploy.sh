@@ -27,7 +27,7 @@ fi
 if [ "$TRAVIS_OS_NAME" == "linux" ]; then
     docker build -t alacritty/ubuntu .
     docker run -v "$(pwd):/source" alacritty/ubuntu /root/.cargo/bin/cargo build --release --manifest-path /source/Cargo.toml
-    mv "./target/release/alacritty" "/target/deploy/alacritty-docker"
+    mv "./target/release/alacritty" "./target/deploy/alacritty-docker"
     rm -rf "./target"
 fi
 
