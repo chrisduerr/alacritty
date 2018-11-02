@@ -24,6 +24,13 @@ if [ "$TRAVIS_OS_NAME" == "osx" ]; then
   mv "./target/release/osx/Alacritty.dmg" "./target/deploy/Alacritty-${TRAVIS_TAG}.dmg";
 fi
 
+if [ "$TRAVIS_OS_NAME" == "linux" ]; then
+    docker build -t alacritty/ubuntu .
+    docker run -v "$(pwd):/source" alacritty/ubuntu /root/.cargo/bin/cargo build --release --manifest-path /source/Cargo.toml
+    mv "./target/release/alacritty" "/target/deploy/alacritty-docker"
+    rm -rf "./target"
+fi
+
 # Create Linux .deb binary
 if [ "$TRAVIS_OS_NAME" == "linux" ]; then
   cargo install cargo-deb;
