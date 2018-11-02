@@ -36,5 +36,4 @@ deploy:
   on:
     tags: true
     rust: stable
-    repo: jwilm/alacritty
-    branch: master
+    repo: chrisduerr/alacritty
