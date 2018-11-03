@@ -29,7 +29,7 @@ if [ "$TRAVIS_OS_NAME" == "linux" ]; then
     docker pull undeadleech/alacritty-ubuntu
     docker run -v "$(pwd):/source" undeadleech/alacritty-ubuntu \
         /root/.cargo/bin/cargo build --release --manifest-path /source/Cargo.toml
-    chown -R $USER:$USER "./target"
+    sudo chown -R $USER:$USER "./target"
     tar -cvzf "./target/deploy/Alacritty-${TRAVIS_TAG}-$(uname -m).tar.gz" "./target/release/alacritty"
 
     cargo install cargo-deb
