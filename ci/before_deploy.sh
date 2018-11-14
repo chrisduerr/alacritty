@@ -31,28 +31,27 @@ elif [ "$TRAVIS_OS_NAME" == "linux" ]; then
     # x86_64
     docker run -v "$(pwd):/source" undeadleech/alacritty-ubuntu \
         /root/.cargo/bin/cargo build --release --manifest-path /source/Cargo.toml
-    sudo chown -R $USER:$USER "./target"
     tar -cvzf "./target/deploy/${name}-x86_64.tar.gz" -C "./target/release/" "alacritty"
 
     # x86_64 deb
-    sudo docker run -v "$(pwd):/source" undeadleech/alacritty-ubuntu \
-        sh -c "cd /source && /root/.cargo/bin/cargo deb"
-    sudo chown -R $USER:$USER "./target"
-    mv "./target/debian/*.deb" "./target/deploy/${name}_amd64.deb"
+    docker run -v "$(pwd):/source" undeadleech/alacritty-ubuntu \
+        sh -c "cd /source && \
+        /root/.cargo/bin/cargo deb --no-build --output ./target/deploy/${name}_amd64.deb"
 
     rm -rf "./target/release"
 
     # i386
     docker run -v "$(pwd):/source" undeadleech/alacritty-ubuntu-i386 \
         /root/.cargo/bin/cargo build --release --manifest-path /source/Cargo.toml
-    sudo chown -R $USER:$USER "./target"
     tar -cvzf "./target/deploy/${name}-i386.tar.gz" -C "./target/release/" "alacritty"
 
     # i386 deb
-    sudo docker run -v "$(pwd):/source" undeadleech/alacritty-ubuntu-i386 \
-        sh -c "cd /source && /root/.cargo/bin/cargo deb"
+    docker run -v "$(pwd):/source" undeadleech/alacritty-ubuntu-i386 \
+        sh -c "cd /source && \
+        /root/.cargo/bin/cargo deb --no-build --output ./target/deploy/${name}_i386.deb"
+
+    # Make sure all files can be uploaded without permission errors
     sudo chown -R $USER:$USER "./target"
-    mv "./target/debian/*.deb" "./target/deploy/${name}_amd64.deb"
 elif [ "$TRAVIS_OS_NAME" == "windows" ]; then
     mv "./target/release/alacritty.exe" "./target/deploy/${name}.exe"
     mv "./target/release/winpty-agent.exe" "./target/deploy/winpty-agent.exe"
