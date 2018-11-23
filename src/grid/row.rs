@@ -43,10 +43,10 @@ impl<T: PartialEq> PartialEq for Row<T> {
     }
 }
 
-impl<T: Copy + Clone> Row<T> {
+impl<T: Clone> Row<T> {
     pub fn new(columns: Column, template: &T) -> Row<T> {
         Row {
-            inner: vec![*template; *columns],
+            inner: vec![template.clone(); *columns],
             occ: 0,
         }
     }
@@ -55,7 +55,7 @@ impl<T: Copy + Clone> Row<T> {
         assert!(self.len() < * cols);
 
         while self.len() != *cols {
-            self.inner.push(*template);
+            self.inner.push(template.clone());
         }
     }
 
@@ -64,7 +64,7 @@ impl<T: Copy + Clone> Row<T> {
     pub fn reset(&mut self, other: &T) {
         let occ = self.occ;
         for item in &mut self.inner[..occ] {
-            *item = *other;
+            *item = other.clone();
         }
 
         self.occ = 0;

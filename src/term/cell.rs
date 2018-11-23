@@ -14,10 +14,11 @@
 use ansi::{NamedColor, Color};
 use grid;
 use index::Column;
+use term::extra_chars::ExtraCharStorageIndex;
 
 bitflags! {
     #[derive(Serialize, Deserialize)]
-    pub struct Flags: u32 {
+    pub struct Flags: u16 {
         const INVERSE           = 0b0_0000_0001;
         const BOLD              = 0b0_0000_0010;
         const ITALIC            = 0b0_0000_0100;
@@ -31,12 +32,13 @@ bitflags! {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Cell {
     pub c: char,
     pub fg: Color,
     pub bg: Color,
     pub flags: Flags,
+    pub extra_chars: Option<std::num::NonZeroU16>,
 }
 
 impl Default for Cell {
@@ -97,6 +99,7 @@ impl Cell {
             bg,
             fg,
             flags: Flags::empty(),
+            extra_chars: None,
         }
     }
 
@@ -110,7 +113,7 @@ impl Cell {
     #[inline]
     pub fn reset(&mut self, template: &Cell) {
         // memcpy template to self
-        *self = *template;
+        *self = template.clone();
     }
 }
 
