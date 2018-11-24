@@ -264,7 +264,7 @@ impl<'a> RenderableCellsIter<'a> {
         self.cursor_cells.push_back(Indexed {
             line: self.cursor.line,
             column: self.cursor.col,
-            inner: cursor,
+            inner: cursor.clone(),
         }).expect("won't exceed capacity");
 
         // If cursor is over a wide (2 cell size) character,
@@ -283,27 +283,27 @@ impl<'a> RenderableCellsIter<'a> {
         let text_color = self.config.cursor_text_color().unwrap_or(cell.bg);
         let cursor_color = self.config.cursor_cursor_color().unwrap_or(cell.fg);
 
-        let original_cell = self.grid[self.cursor];
+        let original_cell = self.grid[self.cursor].clone();
 
-        let mut cursor_cell = self.grid[self.cursor];
+        let mut cursor_cell = self.grid[self.cursor].clone();
         cursor_cell.fg = text_color;
         cursor_cell.bg = cursor_color;
 
-        let mut wide_cell = cursor_cell;
+        let mut wide_cell = cursor_cell.shallow_clone();
         wide_cell.c = ' ';
 
         self.push_cursor_cells(original_cell, cursor_cell, wide_cell);
     }
 
     fn populate_char_cursor(&mut self, cursor_cell_char: char, wide_cell_char: char) {
-        let original_cell = self.grid[self.cursor];
+        let original_cell = self.grid[self.cursor].clone();
 
-        let mut cursor_cell = self.grid[self.cursor];
+        let mut cursor_cell = self.grid[self.cursor].clone();
         let cursor_color = self.config.cursor_cursor_color().unwrap_or(cursor_cell.fg);
         cursor_cell.c = cursor_cell_char;
         cursor_cell.fg = cursor_color;
 
-        let mut wide_cell = cursor_cell;
+        let mut wide_cell = cursor_cell.clone();
         wide_cell.c = wide_cell_char;
 
         self.push_cursor_cells(original_cell, cursor_cell, wide_cell);
@@ -331,7 +331,7 @@ impl<'a> RenderableCellsIter<'a> {
         self.cursor_cells.push_back(Indexed {
             line: self.cursor.line,
             column: self.cursor.col,
-            inner: self.grid[self.cursor],
+            inner: self.grid[self.cursor].clone(),
         }).expect("won't exceed capacity");
     }
 
@@ -597,7 +597,7 @@ impl IndexMut<CharsetIndex> for Charsets {
     }
 }
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Clone)]
 pub struct Cursor {
     /// The location of this cursor
     pub point: Point,
@@ -1291,7 +1291,7 @@ impl Term {
         self.set_scrolling_region(scroll_region);
 
         // Clear grid
-        let template = self.cursor.template;
+        let template = self.cursor.template.shallow_clone();
         self.grid.region_mut(..).each(|c| c.reset(&template));
     }
 
@@ -1385,7 +1385,7 @@ impl ansi::Handler for Term {
                     }
 
                     let cell = &mut self.grid[&self.cursor.point];
-                    *cell = self.cursor.template;
+                    *cell = self.cursor.template.shallow_clone();
                     cell.c = self.cursor.charsets[self.active_charset].map(c);
 
                     // Handle wide chars
@@ -1398,7 +1398,7 @@ impl ansi::Handler for Term {
                 if width == 2 && self.cursor.point.col + 1 < num_cols {
                     self.cursor.point.col += 1;
                     let spacer = &mut self.grid[&self.cursor.point];
-                    *spacer = self.cursor.template;
+                    *spacer = self.cursor.template.shallow_clone();
                     spacer.flags.insert(cell::Flags::WIDE_CHAR_SPACER);
                 }
             }
@@ -1415,7 +1415,7 @@ impl ansi::Handler for Term {
     #[inline]
     fn dectest(&mut self) {
         trace!("dectest");
-        let mut template = self.cursor.template;
+        let mut template = self.cursor.template.shallow_clone();
         template.c = 'E';
 
         self.grid.region_mut(..)
@@ -1472,7 +1472,7 @@ impl ansi::Handler for Term {
 
         // Cells were just moved out towards the end of the line; fill in
         // between source and dest with blanks.
-        let template = self.cursor.template;
+        let template = self.cursor.template.shallow_clone();
         for c in &mut line[source..destination] {
             c.reset(&template);
         }
@@ -1684,7 +1684,7 @@ impl ansi::Handler for Term {
         let end = min(start + count, self.grid.num_cols() - 1);
 
         let row = &mut self.grid[self.cursor.point.line];
-        let template = self.cursor.template; // Cleared cells have current background color set
+        let template = self.cursor.template.shallow_clone();
         for c in &mut row[start..end] {
             c.reset(&template);
         }
@@ -1711,7 +1711,7 @@ impl ansi::Handler for Term {
 
         // Clear last `count` cells in line. If deleting 1 char, need to delete
         // 1 cell.
-        let template = self.cursor.template;
+        let template = self.cursor.template.shallow_clone();
         let end = self.size_info.cols() - count;
         for c in &mut line[end..] {
             c.reset(&template);
@@ -1748,7 +1748,7 @@ impl ansi::Handler for Term {
             &mut self.cursor_save
         };
 
-        *cursor = self.cursor;
+        *cursor = self.cursor.clone();
     }
 
     #[inline]
@@ -1760,7 +1760,7 @@ impl ansi::Handler for Term {
             &self.cursor_save
         };
 
-        self.cursor = *source;
+        self.cursor = source.clone();
         self.cursor.point.line = min(self.cursor.point.line, self.grid.num_lines() - 1);
         self.cursor.point.col = min(self.cursor.point.col, self.grid.num_cols() - 1);
     }
@@ -1768,7 +1768,7 @@ impl ansi::Handler for Term {
     #[inline]
     fn clear_line(&mut self, mode: ansi::LineClearMode) {
         trace!("clear_line: {:?}", mode);
-        let mut template = self.cursor.template;
+        let mut template = self.cursor.template.shallow_clone();
         template.flags ^= template.flags;
 
         let col =  self.cursor.point.col;
@@ -1825,7 +1825,7 @@ impl ansi::Handler for Term {
     #[inline]
     fn clear_screen(&mut self, mode: ansi::ClearMode) {
         trace!("clear_screen: {:?}", mode);
-        let mut template = self.cursor.template;
+        let mut template = self.cursor.template.shallow_clone();
         template.flags ^= template.flags;
 
         match mode {

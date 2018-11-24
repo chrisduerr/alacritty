@@ -17,7 +17,7 @@ use index::Column;
 
 bitflags! {
     #[derive(Serialize, Deserialize)]
-    pub struct Flags: u32 {
+    pub struct Flags: u16 {
         const INVERSE           = 0b0_0000_0001;
         const BOLD              = 0b0_0000_0010;
         const ITALIC            = 0b0_0000_0100;
@@ -31,12 +31,28 @@ bitflags! {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[repr(C)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Cell {
-    pub c: char,
+    pub extra: Option<Vec<char>>,
     pub fg: Color,
     pub bg: Color,
     pub flags: Flags,
+    pub c: char,
+}
+
+impl Cell {
+    pub fn shallow_clone(&self) -> Cell {
+        unsafe {
+            let mut new: Cell = std::mem::uninitialized();
+            let src = (self as *const _ as *const u8).offset(24);
+            let dst = (&mut new as *mut _ as *mut u8).offset(24);
+            let len = std::mem::size_of::<Cell>() - 24;
+            std::ptr::copy_nonoverlapping(src, dst, len);
+            std::ptr::write(&mut new.extra, None);
+            new
+        }
+    }
 }
 
 impl Default for Cell {
@@ -97,6 +113,7 @@ impl Cell {
             bg,
             fg,
             flags: Flags::empty(),
+            extra: None,
         }
     }
 
@@ -110,7 +127,7 @@ impl Cell {
     #[inline]
     pub fn reset(&mut self, template: &Cell) {
         // memcpy template to self
-        *self = *template;
+        *self = template.clone();
     }
 }
 
