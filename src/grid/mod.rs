@@ -123,7 +123,7 @@ pub enum ViewportPosition {
     Below,
 }
 
-impl<T: Copy + Clone> Grid<T> {
+impl<T: Clone> Grid<T> {
     pub fn new(lines: index::Line, cols: index::Column, scrollback: usize, template: T) -> Grid<T> {
         let raw = Storage::with_capacity(lines, Row::new(cols, &template));
         Grid {
@@ -758,7 +758,7 @@ impl<'a, T: 'a> DisplayIter<'a, T> {
     }
 }
 
-impl<'a, T: Copy + 'a> Iterator for DisplayIter<'a, T> {
+impl<'a, T: Clone + 'a> Iterator for DisplayIter<'a, T> {
     type Item = Indexed<T>;
 
     #[inline]
@@ -770,7 +770,7 @@ impl<'a, T: Copy + 'a> Iterator for DisplayIter<'a, T> {
 
         // Get the next item.
         let item = Some(Indexed {
-            inner: self.grid.raw[self.offset][self.col],
+            inner: self.grid.raw[self.offset][self.col].clone(),
             line: self.line,
             column: self.col
         });

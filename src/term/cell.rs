@@ -11,13 +11,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use std::{mem, ptr};
+
 use ansi::{NamedColor, Color};
 use grid;
 use index::Column;
+use term::nonzero_chars::NonzeroCharId;
 
 bitflags! {
     #[derive(Serialize, Deserialize)]
-    pub struct Flags: u32 {
+    pub struct Flags: u16 {
         const INVERSE           = 0b0_0000_0001;
         const BOLD              = 0b0_0000_0010;
         const ITALIC            = 0b0_0000_0100;
@@ -31,12 +34,30 @@ bitflags! {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Cell {
+    #[serde(skip)]
+    pub extra: Option<NonzeroCharId>,
     pub c: char,
     pub fg: Color,
     pub bg: Color,
     pub flags: Flags,
+}
+
+impl Clone for Cell {
+    #[inline]
+    fn clone(&self) -> Self {
+        unsafe {
+            // Copy the cell without requiring use of the `Copy` trait
+            let mut new: Cell = mem::uninitialized();
+            ptr::copy_nonoverlapping(self.as_ptr(), new.as_mut_ptr(), mem::size_of::<Cell>());
+
+            // Use ptr::write so the ID isn't dropped
+            ptr::write(&mut new.extra, None);
+
+            new
+        }
+    }
 }
 
 impl Default for Cell {
@@ -47,7 +68,6 @@ impl Default for Cell {
             Color::Named(NamedColor::Background)
         )
     }
-
 }
 
 /// Get the length of occupied cells in a line
@@ -65,7 +85,7 @@ impl LineLength for grid::Row<Cell> {
         }
 
         for (index, cell) in self[..].iter().rev().enumerate() {
-            if cell.c != ' ' {
+            if cell.c != ' ' && cell.extra.is_some() {
                 length = Column(self.len() - index);
                 break;
             }
@@ -93,6 +113,7 @@ impl Cell {
 
     pub fn new(c: char, fg: Color, bg: Color) -> Cell {
         Cell {
+            extra: None,
             c,
             bg,
             fg,
@@ -102,15 +123,45 @@ impl Cell {
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.c == ' ' &&
-            self.bg == Color::Named(NamedColor::Background) &&
-            !self.flags.intersects(Flags::INVERSE | Flags::UNDERLINE)
+        self.c == ' '
+            && self.extra.is_none()
+            && self.bg == Color::Named(NamedColor::Background)
+            && !self.flags.intersects(Flags::INVERSE | Flags::UNDERLINE)
     }
 
     #[inline]
     pub fn reset(&mut self, template: &Cell) {
-        // memcpy template to self
-        *self = *template;
+        *self = template.clone();
+    }
+
+    #[inline]
+    pub fn chars(&self) -> Vec<char> {
+        if let Some(ref extra) = self.extra {
+            let mut chars = extra.get_chars();
+            chars.insert(0, self.c);
+            chars
+        } else {
+            vec![self.c]
+        }
+    }
+
+    #[inline]
+    pub fn put_extra(&mut self, c: char) {
+        if self.extra.is_none() {
+            self.extra = Some(NonzeroCharId::new());
+        }
+
+        self.extra.as_mut().unwrap().put_char(c);
+    }
+
+    #[inline]
+    fn as_ptr(&self) -> *const u8 {
+        self as *const _ as *const u8
+    }
+
+    #[inline]
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self as *mut _ as *mut u8
     }
 }
 

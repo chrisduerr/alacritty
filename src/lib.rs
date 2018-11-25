@@ -22,6 +22,7 @@
 #[macro_use] extern crate log;
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate static_assertions;
+#[macro_use] extern crate lazy_static;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly",
           target_os = "openbsd"))]
