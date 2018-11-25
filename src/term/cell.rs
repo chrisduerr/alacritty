@@ -11,13 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use std::{mem, ptr};
+
 use ansi::{NamedColor, Color};
 use grid;
 use index::Column;
 
 bitflags! {
     #[derive(Serialize, Deserialize)]
-    pub struct Flags: u32 {
+    pub struct Flags: u16 {
         const INVERSE           = 0b0_0000_0001;
         const BOLD              = 0b0_0000_0010;
         const ITALIC            = 0b0_0000_0100;
@@ -31,12 +33,34 @@ bitflags! {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[repr(C)]
+#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Cell {
+    #[serde(skip)]
+    pub extra: Option<Vec<char>>,
     pub c: char,
     pub fg: Color,
     pub bg: Color,
     pub flags: Flags,
+}
+
+impl Clone for Cell {
+    #[inline]
+    fn clone(&self) -> Self {
+        unsafe {
+            let offset = mem::size_of::<Option<Vec<char>>>() as isize;
+            let len = mem::size_of::<Cell>() - offset as usize;
+
+            let mut new: Cell = mem::uninitialized();
+            let src = self.as_ptr().offset(offset);
+            let dst = new.as_mut_ptr().offset(offset);
+
+            ptr::copy_nonoverlapping(src, dst, len);
+            ptr::write(&mut new.extra, None);
+
+            new
+        }
+    }
 }
 
 impl Default for Cell {
@@ -47,7 +71,6 @@ impl Default for Cell {
             Color::Named(NamedColor::Background)
         )
     }
-
 }
 
 /// Get the length of occupied cells in a line
@@ -93,6 +116,7 @@ impl Cell {
 
     pub fn new(c: char, fg: Color, bg: Color) -> Cell {
         Cell {
+            extra: None,
             c,
             bg,
             fg,
@@ -109,8 +133,17 @@ impl Cell {
 
     #[inline]
     pub fn reset(&mut self, template: &Cell) {
-        // memcpy template to self
-        *self = *template;
+        *self = template.clone();
+    }
+
+    #[inline]
+    fn as_ptr(&self) -> *const u8 {
+        self as *const _ as *const u8
+    }
+
+    #[inline]
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self as *mut _ as *mut u8
     }
 }
 
