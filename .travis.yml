@@ -6,37 +6,13 @@ services:
 git:
   depth: 1
 
-os:
-  - linux
-  - osx
-  - windows
-
-rust:
-  - stable
-  - beta
-  - nightly
-
 matrix:
   fast_finish: true
   include:
-    - if: tag IS present
-      os: linux
-      rust: stable
-      env: ARCH=i386
-    - name: "Clippy Linux"
-      os: linux
-      env: CLIPPY=true
-      rust: stable
-    - name: "Clippy OSX"
-      os: osx
-      env: CLIPPY=true
-      rust: stable
     - name: "Clippy Windows"
       os: windows
       env: CLIPPY=true
       rust: stable
-  allow_failures:
-    - rust: nightly
 
 install: ci/install.sh
 script: ci/script.sh
