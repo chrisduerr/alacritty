@@ -55,6 +55,8 @@ elif [ "$TRAVIS_OS_NAME" == "linux" ] && [ "$ARCH" == "i386" ]; then
     # Make sure all files can be uploaded without permission errors
     sudo chown -R $USER:$USER "./target"
 elif [ "$TRAVIS_OS_NAME" == "windows" ]; then
+    sudo apt-get update
+    sudo apt-get install -y zip
     zip "./target/deploy/${name}-windows.zip" "./target/release/alacritty.exe" \
         "./target/release/winpty-agent.exe"
 fi
