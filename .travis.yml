@@ -27,9 +27,6 @@ matrix:
     - rust: nightly
     - os: windows
 
-before_install:
-  - sudo apt-get install -y zip
-
 install: ci/install.sh
 script: ci/script.sh
 before_deploy: ci/before_deploy.sh
