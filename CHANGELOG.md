@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Windows executable and winpty agent are bundled in a zip archive for releases
+
 ### Fixed
 
 - Resolved off-by-one issue with erasing characters in the last column
