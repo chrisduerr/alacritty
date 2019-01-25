@@ -56,7 +56,7 @@ elif [ "$TRAVIS_OS_NAME" == "linux" ] && [ "$ARCH" == "i386" ]; then
     sudo chown -R $USER:$USER "./target"
 elif [ "$TRAVIS_OS_NAME" == "windows" ]; then
     choco install 7zip
-    7z a -t zip "./target/deploy/${name}-windows.zip" "./target/release/alacritty.exe" \
+    7z a -tzip "./target/deploy/${name}-windows.zip" "./target/release/alacritty.exe" \
         "./target/release/winpty-agent.exe"
 fi
 
