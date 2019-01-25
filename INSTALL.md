@@ -19,7 +19,7 @@
         13. [Windows](#windows)
         14. [Other](#other)
 2. [Building](#building)
-    1. [Linux](#linux)
+    1. [Linux](#linux--windows)
         1. [Desktop Entry](#desktop-entry)
     2. [MacOS](#macos)
     3. [Cargo](#cargo)

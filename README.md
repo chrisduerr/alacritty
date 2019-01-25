@@ -110,7 +110,7 @@ Prebuilt binaries for Linux, macOS, and Windows can be downloaded from the
 
 To work properly on Windows, Alacritty requires winpty to emulate UNIX's PTY API.
 The agent is a single binary (`winpty-agent.exe`) which **must** be in the same
-directory as the Alacritty executable and is available through the
+directory as the Alacritty executable and is also available through the
 [GitHub releases page](https://github.com/jwilm/alacritty/releases).
 
 ## Configuration
