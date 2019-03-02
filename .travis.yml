@@ -45,7 +45,7 @@ before_deploy: ci/before_deploy.sh
 deploy:
   provider: releases
   api_key:
-    secure: G6JZgC5qKZyxEmuu2eMscDO45iOhBjiCSKuO8gxywqm+4DbMZm7y2OSbQCEmnIFqEgi+DLkrH/A7e8LDngQj3lBvRnWkIcszG5ubDm8jsqckXXxjI0cy5q8jJ7s5zZXH2IdXifY59KN9V4iHPwCJlyEE7Aj9JrJLFaVhvaowlSYib9DuDibDX/2u8qZ+gP2D/TntiBlFi8SgiDPd7GrZWmNsxJR9edyYbKx9izROp+4q7KAa0Xqak/Zvg72JZnARiKPmBxESEoYYXFcRgRZD9VvjmQ/il6WcHlGSqqn1TRBtIVl8L/1I5/xBJ6KMegP9Jlh7ybm1JPfX108V5d9a9CyqvRYHrhbkHkf5oktizsgw2WyANwiBhEngliMFuUyT0826BEPtkA4TiD7lQXyvO749INdJsqUlMLLuQNpU9/7ShBcRapbGp6AjWH8yxV9ciNMpNexAaxkupYc2NaU6EAC/C34HAtTdfN+gyvrtnF1ISrPmmGj8YQRiBUsa4TxghsNPbPHWAgMfR5lFp3dONz0oIydhW/AFgpn+7BVvoIW2z8hXiRttseZHv6akeSjFC5vYObR3UdL/NiuvCjZRiYryL0Be/rI83ug8xELVFBBcv4PxcHEsXWT7EMd3QTiPoCwNKoSoBLk8hPFPAGRXULiSDFENKoJAc4A7zJyMiYY=
+    secure: gWW1pJnuAWwZyT1yW7DHQ30U8eWGhZuZN53pMXdFRLHrDq0+x5t9+3GY2v+baibxBDhYcGb9stnCrDHx8jHtsjeKyvEIEDDjkIOwir/kwLcX1xZHqJxNmnbDY2+No5jIhVozJM/RF0v1QKHD9qGGsKKxsII8O1C1aI2ZhvrvwOfC73SGJN+PVjm1+eEVzrOk6kyceh8Wk+MDfCuQgaY6i3eAeKHublS63+5TgUwz+hZ6/PYdja5XcvT8F3likhis6TWA1YVPIXqEA+Nj03W92uLCzngJv9yC6tXYC9T4KxdCVAHyjdt1rIE7zcJijumagcRFwzgNPsmXL3/CWw+HvXf+c1sXgMNiVZSJPBcBOwPP8uBOGCyvoB/81oOoEJDDfio1tnTaZ1+BiXENo3VDDn4AmPl+CAgQ7ArQs2MMAH4XEAaKrO1NhV7s9Hu1ko/7NVFheH3HacmlVydin6HsRGkJU9pUi53fiYrrWvzelF2ihFAfs7cL4aW3ahYP/Gg/RVc5BekPk8KadlMPsiXT5+OkxzqGcXs24VleQ1biZDB0pOYCSEt2c5xmDnNpkXF3/KMReOuC+hu5ByyJ+TJ+aS8gPblpmwKo8NjlfQmWTwMLopILcUyWnHBjHi+P0sGBpLzX9F0Mvh+0+JJLTkxBiBnU1Rd0ifkiJ8jjIAESXjQ=
   skip_cleanup: true
   file_glob: true
   file: "./target/deploy/*"
@@ -53,5 +53,4 @@ deploy:
     tags: true
     rust: stable
     condition: $CLIPPY != true
-    repo: jwilm/alacritty
-    branch: master
+    repo: chrisduerr/alacritty
