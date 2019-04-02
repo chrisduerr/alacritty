@@ -63,7 +63,8 @@ elif [ "$TRAVIS_OS_NAME" == "windows" ]; then
 
     # Create msi installer
     ./WiX.*/tools/candle.exe -nologo -arch "x64" -ext WixUIExtension -ext WixUtilExtension -out "target/alacritty.wixobj" "extra/windows/wix/alacritty.wxs"
-    ./WiX.*/tools/light.exe -nologo -ext WixUIExtension -ext WixUtilExtension -out "target/deploy/${name}-windows-installer.msi" -sice:ICE61 -sice:ICE91 "target/alacritty.wixobj"
+    ./WiX.*/tools/light.exe -nologo -ext WixUIExtension -ext WixUtilExtension -out "target/installer.msi" -sice:ICE61 -sice:ICE91 "target/alacritty.wixobj"
+    mv "target/installer.msi" "target/deploy/${name}-windows-installer.msi"
 fi
 
 # Convert and add manpage if it changed
