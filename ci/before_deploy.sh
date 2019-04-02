@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # All files which should be added only if they changed
-aux_files=("alacritty-completions.bash"
-           "alacritty-completions.fish"
-           "alacritty-completions.zsh"
-           "alacritty.desktop"
-           "alacritty.info"
+aux_files=("extra/completions/alacritty.bash"
+           "extra/completions/alacritty.fish"
+           "extra/completions/_alacritty"
+           "extra/linux/alacritty.desktop"
+           "extra/alacritty.info"
            "alacritty.yml")
 
 # Get previous tag to check for changes
@@ -71,9 +71,7 @@ if [ -n "$(git diff $prev_tag HEAD alacritty.man)" ]; then
     gzip -c "./alacritty.man" > "./target/deploy/alacritty.1.gz"
 fi
 
-# Offer extra files if they changed
+# Offer various other files
 for file in "${aux_files[@]}"; do
-    if [ -n "$(git diff $prev_tag HEAD $file)" ]; then
-        cp $file "./target/deploy/"
-    fi
+    cp $file "./target/deploy/"
 done
