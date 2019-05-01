@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Terminal Benchmarks
+
+[Service]
+Type=oneshot
+User=alacritty
+ExecStart=/home/alacritty/bench.sh
+
+[Install]
+WantedBy=graphical.target
