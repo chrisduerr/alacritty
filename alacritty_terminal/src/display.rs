@@ -23,6 +23,8 @@ use glutin::dpi::{PhysicalPosition, PhysicalSize};
 use glutin::EventsLoop;
 use parking_lot::MutexGuard;
 
+use alacritty_font::{self, Rasterize, Rasterizer};
+
 use crate::config::{Config, StartupMode};
 use crate::index::Line;
 use crate::message_bar::Message;
@@ -33,7 +35,6 @@ use crate::sync::FairMutex;
 use crate::term::color::Rgb;
 use crate::term::{RenderableCell, SizeInfo, Term};
 use crate::window::{self, Window};
-use font::{self, Rasterize};
 
 #[derive(Debug)]
 pub enum Error {
@@ -41,7 +42,7 @@ pub enum Error {
     Window(window::Error),
 
     /// Error dealing with fonts
-    Font(font::Error),
+    Font(alacritty_font::Error),
 
     /// Error in renderer
     Render(renderer::Error),
@@ -81,8 +82,8 @@ impl From<window::Error> for Error {
     }
 }
 
-impl From<font::Error> for Error {
-    fn from(val: font::Error) -> Error {
+impl From<alacritty_font::Error> for Error {
+    fn from(val: alacritty_font::Error) -> Error {
         Error::Font(val)
     }
 }
@@ -102,7 +103,7 @@ pub struct Display {
     rx: mpsc::Receiver<PhysicalSize>,
     tx: mpsc::Sender<PhysicalSize>,
     meter: Meter,
-    font_size: font::Size,
+    font_size: alacritty_font::Size,
     size_info: SizeInfo,
     last_message: Option<Message>,
 }
@@ -298,7 +299,7 @@ impl Display {
         config: &Config,
     ) -> Result<(GlyphCache, f32, f32), Error> {
         let font = config.font.clone();
-        let rasterizer = font::Rasterizer::new(dpr as f32, config.font.use_thin_strokes())?;
+        let rasterizer = Rasterizer::new(dpr as f32, config.font.use_thin_strokes())?;
 
         // Initialize glyph cache
         let glyph_cache = {
@@ -337,7 +338,7 @@ impl Display {
         self.size_info.cell_height = ch;
     }
 
-    fn compute_cell_size(config: &Config, metrics: &font::Metrics) -> (f32, f32) {
+    fn compute_cell_size(config: &Config, metrics: &alacritty_font::Metrics) -> (f32, f32) {
         let offset_x = f64::from(config.font.offset.x);
         let offset_y = f64::from(config.font.offset.y);
         (

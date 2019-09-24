@@ -22,9 +22,13 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use fnv::FnvHasher;
-use font::{self, FontDesc, FontKey, GlyphKey, Rasterize, RasterizedGlyph, Rasterizer};
 use glutin::dpi::PhysicalSize;
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
+
+use alacritty_font::{
+    self, FontDesc, FontKey, GlyphKey, Metrics, Rasterize, RasterizedGlyph, Rasterizer, Slant,
+    Weight,
+};
 
 use crate::config::{self, Config, Delta};
 use crate::cursor::{get_cursor_glyph, CursorKey};
@@ -175,12 +179,12 @@ pub struct GlyphCache {
     bold_italic_key: FontKey,
 
     /// font size
-    font_size: font::Size,
+    font_size: alacritty_font::Size,
 
     /// glyph offset
     glyph_offset: Delta<i8>,
 
-    metrics: ::font::Metrics,
+    metrics: Metrics,
 }
 
 impl GlyphCache {
@@ -188,7 +192,7 @@ impl GlyphCache {
         mut rasterizer: Rasterizer,
         font: &config::Font,
         loader: &mut L,
-    ) -> Result<GlyphCache, font::Error>
+    ) -> Result<GlyphCache, alacritty_font::Error>
     where
         L: LoadGlyph,
     {
@@ -233,12 +237,11 @@ impl GlyphCache {
     fn compute_font_keys(
         font: &config::Font,
         rasterizer: &mut Rasterizer,
-    ) -> Result<(FontKey, FontKey, FontKey, FontKey), font::Error> {
+    ) -> Result<(FontKey, FontKey, FontKey, FontKey), alacritty_font::Error> {
         let size = font.size;
 
         // Load regular font
-        let regular_desc =
-            Self::make_desc(&font.normal(), font::Slant::Normal, font::Weight::Normal);
+        let regular_desc = Self::make_desc(&font.normal(), Slant::Normal, Weight::Normal);
 
         let regular = rasterizer.load_font(&regular_desc, size)?;
 
@@ -252,39 +255,33 @@ impl GlyphCache {
         };
 
         // Load bold font
-        let bold_desc = Self::make_desc(&font.bold(), font::Slant::Normal, font::Weight::Bold);
+        let bold_desc = Self::make_desc(&font.bold(), Slant::Normal, Weight::Bold);
 
         let bold = load_or_regular(bold_desc);
 
         // Load italic font
-        let italic_desc =
-            Self::make_desc(&font.italic(), font::Slant::Italic, font::Weight::Normal);
+        let italic_desc = Self::make_desc(&font.italic(), Slant::Italic, Weight::Normal);
 
         let italic = load_or_regular(italic_desc);
 
         // Load bold italic font
-        let bold_italic_desc =
-            Self::make_desc(&font.bold_italic(), font::Slant::Italic, font::Weight::Bold);
+        let bold_italic_desc = Self::make_desc(&font.bold_italic(), Slant::Italic, Weight::Bold);
 
         let bold_italic = load_or_regular(bold_italic_desc);
 
         Ok((regular, bold, italic, bold_italic))
     }
 
-    fn make_desc(
-        desc: &config::FontDescription,
-        slant: font::Slant,
-        weight: font::Weight,
-    ) -> FontDesc {
+    fn make_desc(desc: &config::FontDescription, slant: Slant, weight: Weight) -> FontDesc {
         let style = if let Some(ref spec) = desc.style {
-            font::Style::Specific(spec.to_owned())
+            alacritty_font::Style::Specific(spec.to_owned())
         } else {
-            font::Style::Description { slant, weight }
+            alacritty_font::Style::Description { slant, weight }
         };
         FontDesc::new(desc.family.clone(), style)
     }
 
-    pub fn font_metrics(&self) -> font::Metrics {
+    pub fn font_metrics(&self) -> Metrics {
         self.rasterizer
             .metrics(self.font_key, self.font_size)
             .expect("metrics load since font is loaded at glyph cache creation")
@@ -312,10 +309,10 @@ impl GlyphCache {
     pub fn update_font_size<L: LoadGlyph>(
         &mut self,
         font: &config::Font,
-        size: font::Size,
+        size: alacritty_font::Size,
         dpr: f64,
         loader: &mut L,
-    ) -> Result<(), font::Error> {
+    ) -> Result<(), alacritty_font::Error> {
         // Clear currently cached data in both GL and the registry
         loader.clear();
         self.cache = HashMap::default();
@@ -352,12 +349,11 @@ impl GlyphCache {
     // Calculate font metrics without access to a glyph cache
     //
     // This should only be used *before* OpenGL is initialized and the glyph cache can be filled.
-    pub fn static_metrics(config: &Config, dpr: f32) -> Result<font::Metrics, font::Error> {
+    pub fn static_metrics(config: &Config, dpr: f32) -> Result<Metrics, alacritty_font::Error> {
         let font = config.font.clone();
 
-        let mut rasterizer = font::Rasterizer::new(dpr, config.font.use_thin_strokes())?;
-        let regular_desc =
-            GlyphCache::make_desc(&font.normal(), font::Slant::Normal, font::Weight::Normal);
+        let mut rasterizer = Rasterizer::new(dpr, config.font.use_thin_strokes())?;
+        let regular_desc = GlyphCache::make_desc(&font.normal(), Slant::Normal, Weight::Normal);
         let regular = rasterizer.load_font(&regular_desc, font.size)?;
         rasterizer.get_glyph(GlyphKey { font_key: regular, c: 'm', size: font.size })?;
 

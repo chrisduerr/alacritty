@@ -1,9 +1,10 @@
 [package]
-name = "font"
+name = "alacritty_font"
 version = "0.1.0"
 authors = ["Joe Wilm <joe@jwilm.com>"]
 description = "Font rendering using the best available solution per platform"
 license = "Apache-2.0"
+repository = "https://github.com/jwilm/alacritty"
 
 [dependencies]
 euclid = "0.20"

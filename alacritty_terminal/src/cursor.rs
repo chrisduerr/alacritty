@@ -16,7 +16,7 @@
 
 use std::cmp;
 
-use font::{Metrics, RasterizedGlyph};
+use alacritty_font::{Metrics, RasterizedGlyph};
 
 use crate::ansi::CursorStyle;
 

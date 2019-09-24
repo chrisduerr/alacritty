@@ -13,7 +13,7 @@
 // limitations under the License.
 use std::collections::HashMap;
 
-use font::Metrics;
+use alacritty_font::Metrics;
 
 use crate::index::Point;
 use crate::term::cell::Flags;

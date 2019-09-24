@@ -1,9 +1,9 @@
 [workspace]
 members = [
     "alacritty",
+    "alacritty_font",
     "alacritty_terminal",
     "copypasta",
-    "font",
     "winpty"
 ]
 

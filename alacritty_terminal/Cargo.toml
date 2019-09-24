@@ -13,7 +13,7 @@ edition = "2018"
 libc = "0.2"
 notify = "4"
 bitflags = "1"
-font = { path = "../font" }
+alacritty_font = { version = "0.1.0", path = "../alacritty_font" }
 parking_lot = "0.9"
 serde = "1"
 serde_derive = "1"
@@ -30,7 +30,7 @@ static_assertions = "0.3.0"
 terminfo = "0.6.1"
 url = "2"
 crossbeam-channel = "0.3.8"
-copypasta = { path = "../copypasta" }
+copypasta = { version = "0.6.0", path = "../copypasta" }
 rfind_url = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]
@@ -41,7 +41,7 @@ signal-hook = { version = "0.1", features = ["mio-support"] }
 x11-dl = "2"
 
 [target.'cfg(windows)'.dependencies]
-winpty = { path = "../winpty" }
+winpty = { version = "0.1.0", path = "../winpty" }
 mio-named-pipes = "0.1"
 miow = "0.3"
 dunce = "1.0"

@@ -5,6 +5,7 @@ authors = ["Zac Pullar-Strecker <zacmps@gmail.com>"]
 license = "MIT"
 description = "Safe rust bindings for winpty"
 edition = "2018"
+repository = "https://github.com/jwilm/alacritty"
 
 [target.'cfg(windows)'.dependencies]
 winpty-sys = "0.4.3"

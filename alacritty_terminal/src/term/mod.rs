@@ -18,10 +18,11 @@ use std::ops::{Index, IndexMut, Range, RangeInclusive};
 use std::time::{Duration, Instant};
 use std::{io, mem, ptr};
 
-use font::{self, Size};
 use glutin::MouseCursor;
 use rfind_url::{Parser, ParserState};
 use unicode_width::UnicodeWidthChar;
+
+use alacritty_font::{self, Size};
 
 use crate::ansi::{
     self, Attr, CharsetIndex, Color, CursorStyle, Handler, NamedColor, StandardCharset, TermInfo,
@@ -2194,8 +2195,9 @@ impl IndexMut<Column> for TabStops {
 mod tests {
     use std::mem;
 
-    use font::Size;
     use serde_json;
+
+    use alacritty_font::Size;
 
     use crate::ansi::{self, CharsetIndex, Handler, StandardCharset};
     use crate::clipboard::Clipboard;

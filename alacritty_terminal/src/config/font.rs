@@ -1,8 +1,9 @@
 use std::fmt;
 
-use font::Size;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer};
+
+use alacritty_font::Size;
 
 #[cfg(target_os = "macos")]
 use crate::config::DefaultTrueBool;
