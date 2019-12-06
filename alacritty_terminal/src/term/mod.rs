@@ -33,7 +33,7 @@ use crate::grid::{
 };
 use crate::index::{self, Column, IndexRange, Line, Point};
 use crate::selection::{self, Selection, SelectionRange, Span};
-use crate::term::cell::{Cell, Flags, LineLength};
+use crate::term::cell::{Cell, Flags};
 use crate::term::color::Rgb;
 #[cfg(windows)]
 use crate::tty;
@@ -948,7 +948,7 @@ impl<T> Term<T> {
         let mut text = String::new();
 
         let grid_line = &self.grid[line];
-        let line_length = grid_line.line_length();
+        let line_length = grid_line.occupied();
         let line_end = min(line_length, cols.end + 1);
 
         let mut tab_mode = false;
@@ -1116,7 +1116,7 @@ impl<T> Term<T> {
     pub fn swap_alt(&mut self) {
         if self.alt {
             let template = self.cursor.template;
-            self.grid.region_mut(..).each(|c| c.reset(&template));
+            self.grid.region_mut(..).each(|row| row.reset(&template));
         }
 
         self.alt = !self.alt;
@@ -1162,7 +1162,7 @@ impl<T> Term<T> {
 
         // Clear grid
         let template = self.cursor.template;
-        self.grid.region_mut(..).each(|c| c.reset(&template));
+        self.grid.region_mut(..).each(|row| row.reset(&template));
     }
 
     #[inline]
@@ -1272,8 +1272,8 @@ impl<T: EventListener> ansi::Handler for Term<T> {
                 let col = self.cursor.point.col;
                 let line = &mut self.grid[line];
 
-                let src = line[col..].as_ptr();
-                let dst = line[(col + width)..].as_mut_ptr();
+                let src = line.iter_mut().into_slice()[col.0..].as_ptr();
+                let dst = line.iter_mut().into_slice()[(col + width).0..].as_mut_ptr();
                 unsafe {
                     // memmove
                     ptr::copy(src, dst, (num_cols - col - width).0);
@@ -1320,7 +1320,7 @@ impl<T: EventListener> ansi::Handler for Term<T> {
         trace!("Decalnning");
 
         let template = Cell { c: 'E', ..Cell::default() };
-        self.grid.region_mut(..).each(|c| c.reset(&template));
+        self.grid.region_mut(..).each(|row| row.reset(&template));
     }
 
     #[inline]
@@ -1362,15 +1362,15 @@ impl<T: EventListener> ansi::Handler for Term<T> {
         let line = &mut self.grid[self.cursor.point.line];
 
         unsafe {
-            let src = line[source..].as_ptr();
-            let dst = line[destination..].as_mut_ptr();
+            let src = line.iter_mut().into_slice()[source.0..].as_ptr();
+            let dst = line.iter_mut().into_slice()[destination.0..].as_mut_ptr();
 
             ptr::copy(src, dst, num_cells);
         }
 
         // Cells were just moved out towards the end of the line; fill in
         // between source and dest with blanks.
-        for c in &mut line[source..destination] {
+        for c in line.iter_mut().skip(source.0).take(destination.0) {
             c.reset(&self.cursor.template);
         }
     }
@@ -1589,7 +1589,7 @@ impl<T: EventListener> ansi::Handler for Term<T> {
 
         let row = &mut self.grid[self.cursor.point.line];
         // Cleared cells have current background color set
-        for c in &mut row[start..end] {
+        for c in row.iter_mut().skip(start.0).take(end.0) {
             c.reset(&self.cursor.template);
         }
     }
@@ -1608,8 +1608,8 @@ impl<T: EventListener> ansi::Handler for Term<T> {
         let line = &mut self.grid[self.cursor.point.line];
 
         unsafe {
-            let src = line[end..].as_ptr();
-            let dst = line[start..].as_mut_ptr();
+            let src = line.iter_mut().into_slice()[end.0..].as_ptr();
+            let dst = line.iter_mut().into_slice()[start.0..].as_mut_ptr();
 
             ptr::copy(src, dst, n);
         }
@@ -1617,9 +1617,7 @@ impl<T: EventListener> ansi::Handler for Term<T> {
         // Clear last `count` cells in line. If deleting 1 char, need to delete
         // 1 cell.
         let end = cols - count;
-        for c in &mut line[end..] {
-            c.reset(&self.cursor.template);
-        }
+        line.reset_from(end.0, &self.cursor.template);
     }
 
     #[inline]
@@ -1669,22 +1667,16 @@ impl<T: EventListener> ansi::Handler for Term<T> {
 
         match mode {
             ansi::LineClearMode::Right => {
-                let row = &mut self.grid[self.cursor.point.line];
-                for cell in &mut row[col..] {
-                    cell.reset(&self.cursor.template);
-                }
+                self.grid[self.cursor.point.line].reset_from(col.0, &self.cursor.template);
             },
             ansi::LineClearMode::Left => {
                 let row = &mut self.grid[self.cursor.point.line];
-                for cell in &mut row[..=col] {
+                for cell in row.iter_mut().take(col.0 + 1) {
                     cell.reset(&self.cursor.template);
                 }
             },
             ansi::LineClearMode::All => {
-                let row = &mut self.grid[self.cursor.point.line];
-                for cell in &mut row[..] {
-                    cell.reset(&self.cursor.template);
-                }
+                self.grid[self.cursor.point.line].reset(&self.cursor.template);
             },
         }
     }
@@ -1763,27 +1755,29 @@ impl<T: EventListener> ansi::Handler for Term<T> {
                     // Fully clear all lines before the current line
                     self.grid
                         .region_mut(..self.cursor.point.line)
-                        .each(|cell| cell.reset(&template));
+                        .each(|row| row.reset(&template));
                 }
                 // Clear up to the current column in the current line
-                let end = min(self.cursor.point.col + 1, self.grid.num_cols());
-                for cell in &mut self.grid[self.cursor.point.line][..end] {
+                let end = min(self.cursor.point.col, self.grid.num_cols() - 1);
+                for cell in self.grid[self.cursor.point.line].iter_mut().take(end.0 + 1) {
                     cell.reset(&template);
                 }
             },
             ansi::ClearMode::Below => {
-                for cell in &mut self.grid[self.cursor.point.line][self.cursor.point.col..] {
-                    cell.reset(&template);
-                }
+                let cursor_line = self.cursor.point.line;
+                let cursor_col = self.cursor.point.col;
+
+                self.grid[cursor_line].reset_from(cursor_col.0, &template);
+
                 if self.cursor.point.line < self.grid.num_lines() - 1 {
                     self.grid
                         .region_mut((self.cursor.point.line + 1)..)
-                        .each(|cell| cell.reset(&template));
+                        .each(|row| row.reset(&template));
                 }
             },
             ansi::ClearMode::All => {
                 if self.mode.contains(TermMode::ALT_SCREEN) {
-                    self.grid.region_mut(..).each(|c| c.reset(&template));
+                    self.grid.region_mut(..).each(|row| row.reset(&template));
                 } else {
                     self.grid.clear_viewport(&template);
                 }

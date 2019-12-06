@@ -336,9 +336,7 @@ impl<T: GridCell + Copy + Clone> Grid<T> {
         // Fill remaining cells and reverse iterator
         let mut reversed = Vec::with_capacity(new_raw.len());
         for mut row in new_raw.drain(..).rev() {
-            if row.len() < cols.0 {
-                row.grow(cols, template);
-            }
+            row.grow(cols);
             reversed.push(row);
         }
 
@@ -381,11 +379,7 @@ impl<T: GridCell + Copy + Clone> Grid<T> {
                     }
 
                     // Make sure new row is at least as long as new width
-                    let occ = wrapped_cells.len();
-                    if occ < cols.0 {
-                        wrapped_cells.append(&mut vec![*template; cols.0 - occ]);
-                    }
-                    let mut row = Row::from_vec(wrapped_cells, occ);
+                    let mut row = Row::from_vec(wrapped_cells, &template, cols);
 
                     // Since inserted might exceed cols, we need to check it again
                     wrapped = row.shrink(cols);
@@ -729,7 +723,7 @@ impl<'point, T> Index<&'point Point> for Grid<T> {
     }
 }
 
-impl<'point, T> IndexMut<&'point Point> for Grid<T> {
+impl<'point, T: Copy> IndexMut<&'point Point> for Grid<T> {
     #[inline]
     fn index_mut<'a, 'b>(&'a mut self, point: &'b Point) -> &'a mut T {
         &mut self[point.line][point.col]
@@ -758,13 +752,11 @@ pub struct RegionMut<'a, T> {
     raw: &'a mut Storage<T>,
 }
 
-impl<'a, T> RegionMut<'a, T> {
-    /// Call the provided function for every item in this region
-    pub fn each<F: Fn(&mut T)>(self, func: F) {
+impl<'a, T: Copy> RegionMut<'a, T> {
+    /// Call the provided function for every item in this region.
+    pub fn each<F: Fn(&mut Row<T>)>(self, func: F) {
         for row in self {
-            for item in row {
-                func(item)
-            }
+            func(row);
         }
     }
 }

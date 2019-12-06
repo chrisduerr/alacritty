@@ -14,9 +14,8 @@
 
 //! Defines the Row type which makes up lines in the grid
 
-use std::cmp::{max, min};
 use std::ops::{Index, IndexMut};
-use std::ops::{Range, RangeFrom, RangeFull, RangeTo, RangeToInclusive};
+use std::cmp::{min, max};
 use std::slice;
 
 use serde::{Deserialize, Serialize};
@@ -28,45 +27,42 @@ use crate::index::Column;
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Row<T> {
     inner: Vec<T>,
-
-    /// occupied entries
-    ///
-    /// Semantically, this value can be understood as the **end** of an
-    /// Exclusive Range. Thus,
-    ///
-    /// - Zero means there are no occupied entries
-    /// - 1 means there is a value at index zero, but nowhere else
-    /// - `occ == inner.len` means every value is occupied
-    pub(crate) occ: usize,
+    columns: usize,
+    template: T,
 }
 
 impl<T: PartialEq> PartialEq for Row<T> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
 }
 
 impl<T: Copy> Row<T> {
+    /// Create a new row.
+    #[inline]
     pub fn new(columns: Column, template: &T) -> Row<T>
     where
         T: GridCell,
     {
-        let occ = if template.is_empty() { 0 } else { columns.0 };
-        Row { inner: vec![*template; columns.0], occ }
+        Row { inner: Vec::with_capacity(columns.0), columns: columns.0, template: *template }
     }
 
-    pub fn grow(&mut self, cols: Column, template: &T) {
-        if self.inner.len() >= cols.0 {
-            return;
-        }
-
-        self.inner.append(&mut vec![*template; cols.0 - self.len()]);
+    /// Create a new row from a vector of cells.
+    #[inline]
+    pub fn from_vec(vec: Vec<T>, template: &T, columns: Column) -> Row<T> {
+        Row { inner: vec, columns: columns.0, template: *template }
     }
 
+    /// Shrink the number of columns in this row.
+    ///
+    /// This will remove all cells which have been removed.
     pub fn shrink(&mut self, cols: Column) -> Option<Vec<T>>
     where
         T: GridCell,
     {
+        self.columns = cols.0;
+
         if self.inner.len() <= cols.0 {
             return None;
         }
@@ -76,8 +72,6 @@ impl<T: Copy> Row<T> {
         let index = new_row.iter().rposition(|c| !c.is_empty()).map(|i| i + 1).unwrap_or(0);
         new_row.truncate(index);
 
-        self.occ = min(self.occ, cols.0);
-
         if new_row.is_empty() {
             None
         } else {
@@ -85,75 +79,77 @@ impl<T: Copy> Row<T> {
         }
     }
 
-    /// Resets contents to the contents of `other`
+    /// Increase the number of columns in this row.
+    #[inline]
+    pub fn grow(&mut self, cols: Column) {
+        self.columns = cols.0;
+    }
+
+    /// Clear the row and update the default cell.
+    #[inline]
     pub fn reset(&mut self, template: &T)
     where
         T: GridCell,
     {
-        if template.is_empty() {
-            for item in &mut self.inner[..self.occ] {
-                *item = *template;
-            }
-            self.occ = 0;
-        } else {
-            let len = self.inner.len();
-            self.inner = vec![*template; len];
-            self.occ = len;
-        }
+        self.template = *template;
+        self.inner.clear();
     }
-}
 
-#[allow(clippy::len_without_is_empty)]
-impl<T> Row<T> {
+    /// Reset all cells after `at`.
     #[inline]
-    pub fn from_vec(vec: Vec<T>, occ: usize) -> Row<T> {
-        Row { inner: vec, occ }
+    pub fn reset_from(&mut self, at: usize, template: &T) {
+        self.template = *template;
+        self.inner.truncate(at);
     }
 
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
+    /// Get a reference to the cell in the last column.
     #[inline]
     pub fn last(&self) -> Option<&T> {
-        self.inner.last()
+        if self.columns == 0 {
+            None
+        } else {
+            Some(self.inner.get(self.columns - 1).unwrap_or(&self.template))
+        }
     }
 
+    /// Get a mutable reference to the cell in the last column.
     #[inline]
     pub fn last_mut(&mut self) -> Option<&mut T> {
-        self.occ = self.inner.len();
+        self.fill(self.columns);
         self.inner.last_mut()
     }
 
+    /// Returns an iterator that allows modifying each value.
     #[inline]
-    pub fn append(&mut self, vec: &mut Vec<T>)
+    pub fn iter_mut(&mut self) -> slice::IterMut<'_, T>
     where
-        T: GridCell,
+        T: Copy
     {
-        self.occ += vec.len();
-        self.inner.append(vec);
+        self.fill(self.columns);
+        self.inner.iter_mut()
     }
 
+    /// Make sure the raw vector has at least `size` elements.
     #[inline]
-    pub fn append_front(&mut self, mut vec: Vec<T>) {
-        self.occ += vec.len();
-
-        vec.append(&mut self.inner);
-        self.inner = vec;
+    fn fill(&mut self, size: usize) {
+        if self.inner.len() < size && size <= self.columns {
+            for _ in self.inner.len()..size {
+                self.inner.push(self.template);
+            }
+        }
     }
 
-    #[inline]
-    pub fn is_empty(&self) -> bool
-    where
-        T: GridCell,
-    {
-        self.inner.iter().all(GridCell::is_empty)
-    }
-
+    /// Split off the front of the row.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `at > self.len()`.
     #[inline]
     pub fn front_split_off(&mut self, at: usize) -> Vec<T> {
-        self.occ = self.occ.saturating_sub(at);
+        // Assure at least `self.len()` can be split off without panic
+        self.fill(min(self.columns, at));
+
+        self.columns -= at;
 
         let mut split = self.inner.split_off(at);
         std::mem::swap(&mut split, &mut self.inner);
@@ -161,14 +157,44 @@ impl<T> Row<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a mut Row<T> {
-    type IntoIter = slice::IterMut<'a, T>;
-    type Item = &'a mut T;
-
+impl<T> Row<T> {
+    /// Add new cells to the end of the row.
     #[inline]
-    fn into_iter(self) -> slice::IterMut<'a, T> {
-        self.occ = self.len();
-        self.inner.iter_mut()
+    pub fn append(&mut self, vec: &mut Vec<T>) {
+        self.inner.append(vec);
+        self.columns = max(self.inner.len(), self.columns);
+    }
+
+    /// Add new cells to the start of the row.
+    #[inline]
+    pub fn append_front(&mut self, mut vec: Vec<T>) {
+        vec.append(&mut self.inner);
+        self.inner = vec;
+        self.columns = max(self.inner.len(), self.columns);
+    }
+
+    /// Returns the number of cells in the row.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.columns
+    }
+
+    /// Returns the number of non-empty cells in the row.
+    #[inline]
+    pub fn occupied(&self) -> Column
+    where
+        T: GridCell
+    {
+        Column(self.inner.iter().rposition(|cell| !cell.is_empty()).map(|o| o + 1).unwrap_or(0))
+    }
+
+    /// Returns `true` if all lines in the row are empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool
+    where
+        T: GridCell,
+    {
+        self.inner.iter().all(GridCell::is_empty)
     }
 }
 
@@ -177,103 +203,14 @@ impl<T> Index<Column> for Row<T> {
 
     #[inline]
     fn index(&self, index: Column) -> &T {
-        &self.inner[index.0]
+        self.inner.get(index.0).unwrap_or(&self.template)
     }
 }
 
-impl<T> IndexMut<Column> for Row<T> {
+impl<T: Copy> IndexMut<Column> for Row<T> {
     #[inline]
     fn index_mut(&mut self, index: Column) -> &mut T {
-        self.occ = max(self.occ, *index + 1);
+        self.fill(index.0 + 1);
         &mut self.inner[index.0]
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Index ranges of columns
-// -----------------------------------------------------------------------------
-
-impl<T> Index<Range<Column>> for Row<T> {
-    type Output = [T];
-
-    #[inline]
-    fn index(&self, index: Range<Column>) -> &[T] {
-        &self.inner[(index.start.0)..(index.end.0)]
-    }
-}
-
-impl<T> IndexMut<Range<Column>> for Row<T> {
-    #[inline]
-    fn index_mut(&mut self, index: Range<Column>) -> &mut [T] {
-        self.occ = max(self.occ, *index.end);
-        &mut self.inner[(index.start.0)..(index.end.0)]
-    }
-}
-
-impl<T> Index<RangeTo<Column>> for Row<T> {
-    type Output = [T];
-
-    #[inline]
-    fn index(&self, index: RangeTo<Column>) -> &[T] {
-        &self.inner[..(index.end.0)]
-    }
-}
-
-impl<T> IndexMut<RangeTo<Column>> for Row<T> {
-    #[inline]
-    fn index_mut(&mut self, index: RangeTo<Column>) -> &mut [T] {
-        self.occ = max(self.occ, *index.end);
-        &mut self.inner[..(index.end.0)]
-    }
-}
-
-impl<T> Index<RangeFrom<Column>> for Row<T> {
-    type Output = [T];
-
-    #[inline]
-    fn index(&self, index: RangeFrom<Column>) -> &[T] {
-        &self.inner[(index.start.0)..]
-    }
-}
-
-impl<T> IndexMut<RangeFrom<Column>> for Row<T> {
-    #[inline]
-    fn index_mut(&mut self, index: RangeFrom<Column>) -> &mut [T] {
-        self.occ = self.len();
-        &mut self.inner[(index.start.0)..]
-    }
-}
-
-impl<T> Index<RangeFull> for Row<T> {
-    type Output = [T];
-
-    #[inline]
-    fn index(&self, _: RangeFull) -> &[T] {
-        &self.inner[..]
-    }
-}
-
-impl<T> IndexMut<RangeFull> for Row<T> {
-    #[inline]
-    fn index_mut(&mut self, _: RangeFull) -> &mut [T] {
-        self.occ = self.len();
-        &mut self.inner[..]
-    }
-}
-
-impl<T> Index<RangeToInclusive<Column>> for Row<T> {
-    type Output = [T];
-
-    #[inline]
-    fn index(&self, index: RangeToInclusive<Column>) -> &[T] {
-        &self.inner[..=(index.end.0)]
-    }
-}
-
-impl<T> IndexMut<RangeToInclusive<Column>> for Row<T> {
-    #[inline]
-    fn index_mut(&mut self, index: RangeToInclusive<Column>) -> &mut [T] {
-        self.occ = max(self.occ, *index.end);
-        &mut self.inner[..=(index.end.0)]
     }
 }

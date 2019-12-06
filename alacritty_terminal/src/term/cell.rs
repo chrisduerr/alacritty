@@ -16,8 +16,7 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 use crate::ansi::{Color, NamedColor};
-use crate::grid::{self, GridCell};
-use crate::index::Column;
+use crate::grid::GridCell;
 
 // Maximum number of zerowidth characters which will be stored per cell.
 pub const MAX_ZEROWIDTH_CHARS: usize = 5;
@@ -84,31 +83,6 @@ impl GridCell for Cell {
         } else {
             self.flags.remove(Flags::WRAPLINE);
         }
-    }
-}
-
-/// Get the length of occupied cells in a line
-pub trait LineLength {
-    /// Calculate the occupied line length
-    fn line_length(&self) -> Column;
-}
-
-impl LineLength for grid::Row<Cell> {
-    fn line_length(&self) -> Column {
-        let mut length = Column(0);
-
-        if self[Column(self.len() - 1)].flags.contains(Flags::WRAPLINE) {
-            return Column(self.len());
-        }
-
-        for (index, cell) in self[..].iter().rev().enumerate() {
-            if cell.c != ' ' || cell.extra[0] != ' ' {
-                length = Column(self.len() - index);
-                break;
-            }
-        }
-
-        length
     }
 }
 

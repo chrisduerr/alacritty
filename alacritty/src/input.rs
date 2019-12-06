@@ -368,6 +368,11 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
         let mut point = self.ctx.size_info().pixels_to_coords(mouse.x, mouse.y);
         point.line = min(point.line, self.ctx.terminal().grid().num_lines() - 1);
 
+        // TODO: Remove
+        let clicked_row = &self.ctx.terminal().grid()[point.line];
+        let clicked_cell = clicked_row[point.col];
+        println!("{:?}", clicked_cell);
+
         self.ctx.mouse_mut().click_state = match self.ctx.mouse().click_state {
             ClickState::Click
                 if !button_changed
