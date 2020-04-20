@@ -22,25 +22,23 @@ use serde_json as json;
 
 use font::Size;
 
-use alacritty_terminal::clipboard::ClipboardType;
-use alacritty_terminal::config::Font;
-use alacritty_terminal::config::LOG_TARGET_CONFIG;
-use alacritty_terminal::event::OnResize;
-use alacritty_terminal::event::{Event, EventListener, Notify};
+use alacritty_terminal::clipboard::{Clipboard, ClipboardType};
+use alacritty_terminal::config::{Font, LOG_TARGET_CONFIG, Program};
+use alacritty_terminal::event::{OnResize, Event, EventListener, Notify};
+use alacritty_terminal::event_loop::{self, EventLoop as PtyEventLoop, Notifier};
 use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::message_bar::{Message, MessageBuffer};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::cell::Cell;
-use alacritty_terminal::term::{SizeInfo, Term, TermMode};
+use alacritty_terminal::term::{SizeInfo, Term};
 #[cfg(not(windows))]
 use alacritty_terminal::tty;
 use alacritty_terminal::util::{limit, start_daemon};
 
 use crate::cli::Options;
-use crate::config;
-use crate::config::Config;
+use crate::config::{self, Config, PAGER_REPLACEMENT_TEXT};
 use crate::display::Display;
 use crate::input::{self, ActionContext as _, FONT_SIZE_STEP};
 use crate::url::{Url, Urls};
@@ -74,7 +72,9 @@ pub struct ActionContext<'a, N, T> {
     pub config: &'a mut Config,
     pub event_loop: &'a EventLoopWindowTarget<Event>,
     pub urls: &'a Urls,
+    pub clipboard: &'a mut Clipboard,
     font_size: &'a mut Size,
+    launch_pager: &'a mut bool,
 }
 
 impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionContext<'a, N, T> {
@@ -90,11 +90,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         self.terminal.scroll_display(scroll);
 
         // Update selection
-        if self.terminal.mode().contains(TermMode::VI)
-            && self.terminal.selection().as_ref().map(|s| s.is_empty()) != Some(true)
-        {
-            self.update_selection(self.terminal.vi_mode_cursor.point, Side::Right);
-        } else if ElementState::Pressed == self.mouse().left_button_state {
+        if ElementState::Pressed == self.mouse().left_button_state {
             let (x, y) = (self.mouse().x, self.mouse().y);
             let size_info = self.size_info();
             let point = size_info.pixels_to_coords(x, y);
@@ -106,7 +102,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     fn copy_selection(&mut self, ty: ClipboardType) {
         if let Some(selected) = self.terminal.selection_to_string() {
             if !selected.is_empty() {
-                self.terminal.clipboard().store(ty, selected);
+                self.clipboard.store(ty, selected);
             }
         }
     }
@@ -124,14 +120,8 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         let point = self.terminal.visible_to_buffer(point);
 
         // Update selection if one exists
-        let vi_mode = self.terminal.mode().contains(TermMode::VI);
         if let Some(selection) = self.terminal.selection_mut() {
             selection.update(point, side);
-
-            if vi_mode {
-                selection.include_all();
-            }
-
             self.terminal.dirty = true;
         }
     }
@@ -164,12 +154,6 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn mouse_mode(&self) -> bool {
-        self.terminal.mode().intersects(TermMode::MOUSE_MODE)
-            && !self.terminal.mode().contains(TermMode::VI)
     }
 
     #[inline]
@@ -276,6 +260,11 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         self.urls
     }
 
+    #[inline]
+    fn clipboard(&mut self) -> &mut Clipboard {
+        self.clipboard
+    }
+
     /// Spawn URL launcher when clicking on URLs.
     fn launch_url(&self, url: Url) {
         if self.mouse.block_url_launcher {
@@ -293,6 +282,12 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
                 Err(_) => warn!("Unable to launch {} with args {:?}", launcher.program(), args),
             }
         }
+    }
+
+    /// Request pager to be launched after all events have been processed.
+    #[inline]
+    fn launch_pager(&mut self) {
+        *self.launch_pager = true;
     }
 }
 
@@ -348,8 +343,12 @@ impl Default for Mouse {
 ///
 /// Stores some state from received events and dispatches actions when they are
 /// triggered.
-pub struct Processor<N> {
-    notifier: N,
+pub struct Processor {
+    notifier: Notifier,
+    terminal: Arc<FairMutex<Term<EventProxy>>>,
+    inactive_notifier: Option<Notifier>,
+    inactive_terminal: Option<Arc<FairMutex<Term<EventProxy>>>>,
+    clipboard: Clipboard,
     mouse: Mouse,
     received_count: usize,
     suppress_chars: bool,
@@ -360,36 +359,44 @@ pub struct Processor<N> {
     font_size: Size,
 }
 
-impl<N: Notify + OnResize> Processor<N> {
+impl Processor {
     /// Create a new event processor
     ///
     /// Takes a writer which is expected to be hooked up to the write end of a
     /// pty.
     pub fn new(
-        notifier: N,
-        message_buffer: MessageBuffer,
+        notifier: Notifier,
+        terminal: Arc<FairMutex<Term<EventProxy>>>,
         config: Config,
         display: Display,
-    ) -> Processor<N> {
+    ) -> Processor {
+        #[cfg(not(any(target_os = "macos", windows)))]
+        let clipboard = Clipboard::new(display.window.wayland_display());
+        #[cfg(any(target_os = "macos", windows))]
+        let clipboard = Clipboard::new();
+
         Processor {
             notifier,
+            terminal,
+            inactive_notifier: None,
+            inactive_terminal: None,
             mouse: Default::default(),
             received_count: 0,
             suppress_chars: false,
             modifiers: Default::default(),
             font_size: config.font.size,
             config,
-            message_buffer,
+            message_buffer: MessageBuffer::new(),
             display,
+            clipboard,
         }
     }
 
     /// Run the event loop.
-    pub fn run<T>(&mut self, terminal: Arc<FairMutex<Term<T>>>, mut event_loop: EventLoop<Event>)
-    where
-        T: EventListener,
-    {
+    pub fn run(&mut self, mut event_loop: EventLoop<Event>) {
         let mut event_queue = Vec::new();
+
+        let proxy = EventProxy::new(event_loop.create_proxy());
 
         event_loop.run_return(|event, event_loop, control_flow| {
             if self.config.debug.print_events {
@@ -404,7 +411,16 @@ impl<N: Notify + OnResize> Processor<N> {
             match event {
                 // Check for shutdown
                 GlutinEvent::UserEvent(Event::Exit) => {
-                    *control_flow = ControlFlow::Exit;
+                    match (self.inactive_terminal.take(), self.inactive_notifier.take()) {
+                        (Some(terminal), Some(notifier)) => {
+                            self.terminal = terminal;
+                            self.notifier = notifier;
+                        },
+                        _ => {
+                            *control_flow = ControlFlow::Exit;
+                        },
+                    }
+
                     return;
                 },
                 // Process events
@@ -435,13 +451,14 @@ impl<N: Notify + OnResize> Processor<N> {
                 },
             }
 
-            let mut terminal = terminal.lock();
+            let mut terminal = self.terminal.lock();
 
             let mut display_update_pending = DisplayUpdate::default();
+            let mut launch_pager = false;
 
             let context = ActionContext {
-                terminal: &mut terminal,
                 notifier: &mut self.notifier,
+                terminal: &mut terminal,
                 mouse: &mut self.mouse,
                 size_info: &mut self.display.size_info,
                 received_count: &mut self.received_count,
@@ -453,6 +470,8 @@ impl<N: Notify + OnResize> Processor<N> {
                 font_size: &mut self.font_size,
                 config: &mut self.config,
                 urls: &self.display.urls,
+                clipboard: &mut self.clipboard,
+                launch_pager: &mut launch_pager,
                 event_loop,
             };
             let mut processor = input::Processor::new(context, &self.display.highlighted_url);
@@ -470,6 +489,15 @@ impl<N: Notify + OnResize> Processor<N> {
                     &self.config,
                     display_update_pending,
                 );
+            }
+
+            // Swap active terminal with new pager terminal.
+            if launch_pager && self.inactive_terminal.is_none() {
+                drop(terminal);
+
+                self.launch_pager(proxy.clone());
+
+                return;
             }
 
             if terminal.dirty {
@@ -492,13 +520,13 @@ impl<N: Notify + OnResize> Processor<N> {
         });
 
         // Write ref tests to disk
-        self.write_ref_test_results(&terminal.lock());
+        self.write_ref_test_results();
     }
 
     /// Handle events from glutin
     ///
     /// Doesn't take self mutably due to borrow checking.
-    fn handle_event<T>(
+    fn handle_event<N: Notify + OnResize, T>(
         event: GlutinEvent<Event>,
         processor: &mut input::Processor<T, ActionContext<N, T>>,
     ) where
@@ -531,6 +559,15 @@ impl<N: Notify + OnResize> Processor<N> {
                     processor.ctx.terminal.dirty = true;
                 },
                 Event::MouseCursorDirty => processor.reset_mouse_cursor(),
+                Event::ClipboardStore(clipboard_type, text) => {
+                    processor.ctx.clipboard.store(clipboard_type, text);
+                },
+                Event::ClipboardLoad(clipboard_type) => {
+                    // TODO
+                    // format!("\x1b]52;{};{}{}", clipboard as char, base64, terminator);
+                    let text = processor.ctx.clipboard.load(clipboard_type);
+                    processor.ctx.write_to_pty(text.into_bytes());
+                },
                 Event::Exit => (),
             },
             GlutinEvent::RedrawRequested(_) => processor.ctx.terminal.dirty = true,
@@ -653,7 +690,8 @@ impl<N: Notify + OnResize> Processor<N> {
         }
     }
 
-    pub fn reload_config<T>(
+    /// Handle and propagate live config reload.
+    pub fn reload_config<N: Notify + OnResize, T>(
         path: &PathBuf,
         processor: &mut input::Processor<T, ActionContext<N, T>>,
     ) where
@@ -701,8 +739,65 @@ impl<N: Notify + OnResize> Processor<N> {
         processor.ctx.terminal.dirty = true;
     }
 
+    /// Switch out the primary terminal with the configured pager.
+    fn launch_pager(&mut self, event_proxy: EventProxy) {
+        let size_info = self.display.size_info;
+        let term = self.terminal.lock();
+
+        // Replace display offset line number in pager
+        let mut pager = self.config.ui_config.pager.clone();
+        if let Program::WithArgs { args, .. } = &mut pager {
+            let line_number = term.grid().history_size() - term.grid().display_offset() + 1;
+            let line_number_text = line_number.to_string();
+            for arg in args {
+                *arg = arg.replace(PAGER_REPLACEMENT_TEXT, &line_number_text);
+            }
+        }
+
+        // Create a new terminal for the pager
+        let terminal = Term::new(&self.config, &size_info, event_proxy.clone());
+        let mut terminal = Arc::new(FairMutex::new(terminal));
+
+        // Launch a new PTY with the configured pager as shell
+        println!("STARTING CONVERSION TO TEXT");
+        let start_time = Instant::now();
+        // TODO: Inline again
+        let text = term.to_string();
+        println!("FINISHED CONVERSION TO TEXT IN {:?}", Instant::now().duration_since(start_time));
+        let pty = tty::new(
+            Some(&pager),
+            Some(text),
+            None,
+            &size_info,
+            self.display.window.x11_window_id()
+        );
+
+        // Spawn the PTY event loop
+        let event_loop = PtyEventLoop::new(
+            terminal.clone(),
+            event_proxy,
+            pty,
+            &self.config,
+        );
+        let loop_tx = event_loop.channel();
+
+        let mut notifier = event_loop::Notifier(loop_tx.clone());
+
+        event_loop.spawn();
+
+        drop(term);
+
+        mem::swap(&mut terminal, &mut self.terminal);
+        mem::swap(&mut notifier, &mut self.notifier);
+
+        self.inactive_terminal = Some(terminal);
+        self.inactive_notifier = Some(notifier);
+    }
+
     // Write the ref test results to the disk
-    pub fn write_ref_test_results<T>(&self, terminal: &Term<T>) {
+    pub fn write_ref_test_results(&self) {
+        let terminal = self.terminal.lock();
+
         if !self.config.debug.ref_test {
             return;
         }

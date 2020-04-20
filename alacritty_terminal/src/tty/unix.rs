@@ -14,28 +14,27 @@
 //
 //! tty related functionality
 
-use crate::config::{Config, Shell};
-use crate::event::OnResize;
-use crate::term::SizeInfo;
-use crate::tty::{ChildEvent, EventedPty, EventedReadWrite};
+use std::ffi::CStr;
+use std::fs::File;
+use std::io::{self, Write};
+use std::mem::MaybeUninit;
+use std::os::unix::process::CommandExt;
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::process::{Child, Command, Stdio};
+use std::ptr;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::PathBuf;
 
 use libc::{self, c_int, pid_t, winsize, TIOCSCTTY};
 use log::error;
 use nix::pty::openpty;
 use signal_hook::{self as sighook, iterator::Signals};
-
 use mio::unix::EventedFd;
-use std::ffi::CStr;
-use std::fs::File;
-use std::io;
-use std::mem::MaybeUninit;
-use std::os::unix::{
-    io::{AsRawFd, FromRawFd, RawFd},
-    process::CommandExt,
-};
-use std::process::{Child, Command, Stdio};
-use std::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+
+use crate::config::Program;
+use crate::event::OnResize;
+use crate::term::SizeInfo;
+use crate::tty::{ChildEvent, EventedPty, EventedReadWrite};
 
 /// Process ID of child process
 ///
@@ -141,25 +140,36 @@ pub struct Pty {
 }
 
 /// Create a new tty and return a handle to interact with it.
-pub fn new<C>(config: &Config<C>, size: &SizeInfo, window_id: Option<usize>) -> Pty {
+pub fn new(
+    shell: Option<&Program>,
+    stdin: Option<String>,
+    working_directory: Option<&PathBuf>,
+    size: &SizeInfo,
+    window_id: Option<usize>,
+) -> Pty {
     let win_size = size.to_winsize();
     let mut buf = [0; 1024];
     let pw = get_pw_entry(&mut buf);
 
     let (master, slave) = make_pty(win_size);
 
-    let default_shell = if cfg!(target_os = "macos") {
+    #[cfg(target_os = "macos")]
+    let default_shell = {
         let shell_name = pw.shell.rsplit('/').next().unwrap();
         let argv = vec![String::from("-c"), format!("exec -a -{} {}", shell_name, pw.shell)];
 
-        Shell::new_with_args("/bin/bash", argv)
-    } else {
-        Shell::new(pw.shell)
+        Program::WithArgs {
+            program: "/bin/bash",
+            args,
+        }
     };
-    let shell = config.shell.as_ref().unwrap_or(&default_shell);
+    #[cfg(not(target_os = "macos"))]
+    let default_shell = Program::Just(pw.shell.into());
 
-    let mut builder = Command::new(&*shell.program);
-    for arg in &shell.args {
+    let shell = shell.unwrap_or(&default_shell);
+
+    let mut builder = Command::new(shell.program());
+    for arg in shell.args() {
         builder.arg(arg);
     }
 
@@ -167,9 +177,15 @@ pub fn new<C>(config: &Config<C>, size: &SizeInfo, window_id: Option<usize>) -> 
     // Ownership of fd is transferred to the Stdio structs and will be closed by them at the end of
     // this scope. (It is not an issue that the fd is closed three times since File::drop ignores
     // error on libc::close.)
-    builder.stdin(unsafe { Stdio::from_raw_fd(slave) });
     builder.stderr(unsafe { Stdio::from_raw_fd(slave) });
     builder.stdout(unsafe { Stdio::from_raw_fd(slave) });
+
+    // Only hookup stdin to slave when not passing any stdin
+    if stdin.is_some() {
+        builder.stdin(Stdio::piped());
+    } else {
+        builder.stdin(unsafe { Stdio::from_raw_fd(slave) });
+    }
 
     // Setup shell environment
     builder.env("LOGNAME", pw.name);
@@ -207,7 +223,7 @@ pub fn new<C>(config: &Config<C>, size: &SizeInfo, window_id: Option<usize>) -> 
     }
 
     // Handle set working directory option
-    if let Some(dir) = &config.working_directory {
+    if let Some(dir) = working_directory {
         builder.current_dir(dir);
     }
 
@@ -215,7 +231,7 @@ pub fn new<C>(config: &Config<C>, size: &SizeInfo, window_id: Option<usize>) -> 
     let signals = Signals::new(&[sighook::SIGCHLD]).expect("error preparing signal handling");
 
     match builder.spawn() {
-        Ok(child) => {
+        Ok(mut child) => {
             // Remember child PID so other modules can use it
             PID.store(child.id() as usize, Ordering::Relaxed);
 
@@ -223,6 +239,16 @@ pub fn new<C>(config: &Config<C>, size: &SizeInfo, window_id: Option<usize>) -> 
                 // Maybe this should be done outside of this function so nonblocking
                 // isn't forced upon consumers. Although maybe it should be?
                 set_nonblocking(master);
+            }
+
+            // Write data to child's stdin
+            if let (Some(mut stdin), Some(text)) = (child.stdin.take(), stdin) {
+                println!("BEFORE WRITE");
+                let bytes = text.as_bytes();
+                println!("BYTES LEN: {}", bytes.len());
+                // TODO: Switch this to write()
+                let _ = stdin.write_all(bytes).unwrap();
+                println!("AFTER WRITE");
             }
 
             let mut pty = Pty {
@@ -235,7 +261,7 @@ pub fn new<C>(config: &Config<C>, size: &SizeInfo, window_id: Option<usize>) -> 
             pty.on_resize(size);
             pty
         },
-        Err(err) => die!("Failed to spawn command '{}': {}", shell.program, err),
+        Err(err) => die!("Failed to spawn command '{}': {}", shell.program(), err),
     }
 }
 

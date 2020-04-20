@@ -166,6 +166,89 @@ impl Cell {
             }
         }
     }
+
+    pub fn as_escape(&self, buf: &mut String, last: Self) {
+        // Always push CSI introducer since it's more efficient to truncate later
+        *buf += "\x1b[";
+        let empty_len = buf.len();
+
+        self.fg.as_escape(buf, last.fg, false);
+        self.bg.as_escape(buf, last.bg, true);
+
+        let last_bold = last.flags.contains(Flags::BOLD);
+        let last_dim = last.flags.contains(Flags::DIM);
+        let bold = self.flags.contains(Flags::BOLD);
+        let dim = self.flags.contains(Flags::DIM);
+        if last_bold != bold || last_dim != dim {
+            if !bold && !dim {
+                *buf += "22;";
+            } else if bold {
+                *buf += "1;";
+            } else if dim {
+                *buf += "2;";
+            }
+        }
+
+        let last_italic = last.flags.contains(Flags::ITALIC);
+        let italic = self.flags.contains(Flags::ITALIC);
+        if italic != last_italic {
+            if italic {
+                *buf += "3;";
+            } else if last_italic {
+                *buf += "23;";
+            }
+        }
+
+        let last_underline = last.flags.contains(Flags::UNDERLINE);
+        let underline = self.flags.contains(Flags::UNDERLINE);
+        if underline != last_underline {
+            if underline {
+                *buf += "4;";
+            } else if last_underline {
+                *buf += "24;";
+            }
+        }
+
+        let last_inverse = last.flags.contains(Flags::INVERSE);
+        let inverse = self.flags.contains(Flags::INVERSE);
+        if inverse != last_inverse {
+            if inverse {
+                *buf += "7;";
+            } else if last_inverse {
+                *buf += "27;";
+            }
+        }
+
+        let last_hidden = last.flags.contains(Flags::HIDDEN);
+        let hidden = self.flags.contains(Flags::HIDDEN);
+        if hidden != last_hidden {
+            if hidden {
+                *buf += "8;";
+            } else if last_hidden {
+                *buf += "28;";
+            }
+        }
+
+        let last_strikeout = last.flags.contains(Flags::STRIKEOUT);
+        let strikeout = self.flags.contains(Flags::STRIKEOUT);
+        if strikeout != last_strikeout {
+            if strikeout {
+                *buf += "9;";
+            } else if last_strikeout {
+                *buf += "29;";
+            }
+        }
+
+        if buf.len() == empty_len {
+            // Remove previously added CSI introducer if nothing changed
+            buf.truncate(empty_len - 2);
+        } else {
+            unsafe {
+                let last_byte = buf.len() - 1;
+                buf.as_bytes_mut()[last_byte] = b'm';
+            }
+        }
+    }
 }
 
 #[cfg(test)]

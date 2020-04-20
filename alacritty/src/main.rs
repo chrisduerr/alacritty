@@ -36,12 +36,10 @@ use log::{error, info};
 #[cfg(windows)]
 use winapi::um::wincon::{AttachConsole, FreeConsole, ATTACH_PARENT_PROCESS};
 
-use alacritty_terminal::clipboard::Clipboard;
 use alacritty_terminal::event::Event;
 use alacritty_terminal::event_loop::{self, EventLoop, Msg};
 #[cfg(target_os = "macos")]
 use alacritty_terminal::locale;
-use alacritty_terminal::message_bar::MessageBuffer;
 use alacritty_terminal::panic;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::Term;
@@ -149,29 +147,26 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
 
     info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
 
-    // Create new native clipboard
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let clipboard = Clipboard::new(display.window.wayland_display());
-    #[cfg(any(target_os = "macos", windows))]
-    let clipboard = Clipboard::new();
+    // Create the pty
+    //
+    // The pty forks a process to run the shell on the slave side of the
+    // pseudoterminal. A file descriptor for the master side is retained for
+    // reading/writing to the shell.
+    let pty = tty::new(
+        config.shell.as_ref(),
+        None,
+        config.working_directory.as_ref(),
+        &display.size_info,
+        display.window.x11_window_id()
+    );
 
     // Create the terminal
     //
     // This object contains all of the state about what's being displayed. It's
     // wrapped in a clonable mutex since both the I/O loop and display need to
     // access it.
-    let terminal = Term::new(&config, &display.size_info, clipboard, event_proxy.clone());
+    let terminal = Term::new(&config, &display.size_info, event_proxy.clone());
     let terminal = Arc::new(FairMutex::new(terminal));
-
-    // Create the pty
-    //
-    // The pty forks a process to run the shell on the slave side of the
-    // pseudoterminal. A file descriptor for the master side is retained for
-    // reading/writing to the shell.
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let pty = tty::new(&config, &display.size_info, display.window.x11_window_id());
-    #[cfg(any(target_os = "macos", windows))]
-    let pty = tty::new(&config, &display.size_info, None);
 
     // Create the pseudoterminal I/O loop
     //
@@ -179,7 +174,12 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     // renderer and input processing. Note that access to the terminal state is
     // synchronized since the I/O loop updates the state, and the display
     // consumes it periodically.
-    let event_loop = EventLoop::new(Arc::clone(&terminal), event_proxy.clone(), pty, &config);
+    let event_loop = EventLoop::new(
+        terminal.clone(),
+        event_proxy.clone(),
+        pty,
+        &config,
+    );
 
     // The event loop channel allows write requests from the event processor
     // to be sent to the pty loop and ultimately written to the pty.
@@ -193,12 +193,9 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
         config.config_path.as_ref().map(|path| Monitor::new(path, event_proxy.clone()));
     }
 
-    // Setup storage for message UI
-    let message_buffer = MessageBuffer::new();
-
     // Event processor
-    let mut processor =
-        Processor::new(event_loop::Notifier(loop_tx.clone()), message_buffer, config, display);
+    let notifier = event_loop::Notifier(loop_tx.clone());
+    let mut processor = Processor::new(notifier, terminal, config, display);
 
     // Kick off the I/O thread
     let io_thread = event_loop.spawn();
@@ -206,7 +203,7 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     info!("Initialisation complete");
 
     // Start event loop and block until shutdown
-    processor.run(terminal, window_event_loop);
+    processor.run(window_event_loop);
 
     // This explicit drop is needed for Windows, ConPTY backend. Otherwise a deadlock can occur.
     // The cause:

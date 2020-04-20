@@ -76,7 +76,7 @@ impl Default for Clipboard {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ClipboardType {
     Clipboard,
     Selection,

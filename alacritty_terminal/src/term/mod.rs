@@ -17,6 +17,7 @@ use std::cmp::{max, min};
 use std::ops::{Index, IndexMut, Range};
 use std::time::{Duration, Instant};
 use std::{io, mem, ptr, str};
+use std::fmt::{self, Display, Formatter};
 
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
@@ -25,17 +26,16 @@ use unicode_width::UnicodeWidthChar;
 use crate::ansi::{
     self, Attr, CharsetIndex, Color, CursorStyle, Handler, NamedColor, StandardCharset, TermInfo,
 };
-use crate::clipboard::{Clipboard, ClipboardType};
+use crate::clipboard::ClipboardType;
 use crate::config::{Config, VisualBellAnimation};
 use crate::event::{Event, EventListener};
 use crate::grid::{
     BidirectionalIterator, DisplayIter, Grid, GridCell, IndexRegion, Indexed, Scroll,
 };
-use crate::index::{self, Column, IndexRange, Line, Point, Side};
+use crate::index::{self, Column, IndexRange, Line, Point};
 use crate::selection::{Selection, SelectionRange};
 use crate::term::cell::{Cell, Flags, LineLength};
 use crate::term::color::Rgb;
-use crate::vi_mode::{ViModeCursor, ViMotion};
 
 pub mod cell;
 pub mod color;
@@ -527,7 +527,6 @@ pub mod mode {
             const MOUSE_MODE          = 0b0000_0010_0000_0100_1000;
             const UTF8_MOUSE          = 0b0000_0100_0000_0000_0000;
             const ALTERNATE_SCROLL    = 0b0000_1000_0000_0000_0000;
-            const VI                  = 0b0001_0000_0000_0000_0000;
             const ANY                 = std::u32::MAX;
         }
     }
@@ -823,9 +822,6 @@ pub struct Term<T> {
     /// The cursor.
     cursor: Cursor,
 
-    /// Cursor location for vi mode.
-    pub vi_mode_cursor: ViModeCursor,
-
     /// Index into `charsets`, pointing to what ASCII is currently being mapped to.
     active_charset: CharsetIndex,
 
@@ -867,12 +863,6 @@ pub struct Term<T> {
     /// Default style for resetting the cursor.
     default_cursor_style: CursorStyle,
 
-    /// Style of the vi mode cursor.
-    vi_mode_cursor_style: Option<CursorStyle>,
-
-    /// Clipboard access coupled to the active window
-    clipboard: Clipboard,
-
     /// Proxy for sending events to the event loop.
     event_proxy: T,
 
@@ -912,7 +902,6 @@ impl<T> Term<T> {
     pub fn new<C>(
         config: &Config<C>,
         size: &SizeInfo,
-        clipboard: Clipboard,
         event_proxy: T,
     ) -> Term<T> {
         let num_cols = size.cols();
@@ -937,7 +926,6 @@ impl<T> Term<T> {
             alt: false,
             active_charset: Default::default(),
             cursor: Default::default(),
-            vi_mode_cursor: Default::default(),
             cursor_save: Default::default(),
             cursor_save_alt: Default::default(),
             tabs,
@@ -949,9 +937,7 @@ impl<T> Term<T> {
             semantic_escape_chars: config.selection.semantic_escape_chars().to_owned(),
             cursor_style: None,
             default_cursor_style: config.cursor.style,
-            vi_mode_cursor_style: config.cursor.vi_mode_style,
             dynamic_title: config.dynamic_title(),
-            clipboard,
             event_proxy,
             is_focused: true,
             title: None,
@@ -978,7 +964,6 @@ impl<T> Term<T> {
             self.mode.remove(TermMode::ALTERNATE_SCROLL);
         }
         self.default_cursor_style = config.cursor.style;
-        self.vi_mode_cursor_style = config.cursor.vi_mode_style;
 
         self.default_title = config.window.title.clone();
         self.dynamic_title = config.dynamic_title();
@@ -1173,8 +1158,6 @@ impl<T> Term<T> {
         self.cursor_save.point.line = min(self.cursor_save.point.line, num_lines - 1);
         self.cursor_save_alt.point.col = min(self.cursor_save_alt.point.col, num_cols - 1);
         self.cursor_save_alt.point.line = min(self.cursor_save_alt.point.line, num_lines - 1);
-        self.vi_mode_cursor.point.col = min(self.vi_mode_cursor.point.col, num_cols - 1);
-        self.vi_mode_cursor.point.line = min(self.vi_mode_cursor.point.line, num_lines - 1);
 
         // Recreate tabs list
         self.tabs.resize(self.grid.num_cols());
@@ -1256,53 +1239,6 @@ impl<T> Term<T> {
     }
 
     #[inline]
-    pub fn clipboard(&mut self) -> &mut Clipboard {
-        &mut self.clipboard
-    }
-
-    /// Toggle the vi mode.
-    #[inline]
-    pub fn toggle_vi_mode(&mut self) {
-        self.mode ^= TermMode::VI;
-        self.grid.selection = None;
-
-        // Reset vi mode cursor position to match primary cursor
-        if self.mode.contains(TermMode::VI) {
-            let line = min(self.cursor.point.line + self.grid.display_offset(), self.lines() - 1);
-            self.vi_mode_cursor = ViModeCursor::new(Point::new(line, self.cursor.point.col));
-        }
-
-        self.dirty = true;
-    }
-
-    /// Move vi mode cursor.
-    #[inline]
-    pub fn vi_motion(&mut self, motion: ViMotion)
-    where
-        T: EventListener,
-    {
-        // Require vi mode to be active
-        if !self.mode.contains(TermMode::VI) {
-            return;
-        }
-
-        // Move cursor
-        self.vi_mode_cursor = self.vi_mode_cursor.motion(self, motion);
-
-        // Update selection if one is active
-        let viewport_point = self.visible_to_buffer(self.vi_mode_cursor.point);
-        if let Some(selection) = &mut self.grid.selection {
-            // Do not extend empty selections started by single mouse click
-            if !selection.is_empty() {
-                selection.update(viewport_point, Side::Left);
-                selection.include_all();
-            }
-        }
-
-        self.dirty = true;
-    }
-
-    #[inline]
     pub fn semantic_escape_chars(&self) -> &str {
         &self.semantic_escape_chars
     }
@@ -1345,41 +1281,24 @@ impl<T> Term<T> {
 
     /// Get rendering information about the active cursor.
     fn renderable_cursor<C>(&self, config: &Config<C>) -> RenderableCursor {
-        let vi_mode = self.mode.contains(TermMode::VI);
-
         // Cursor position
-        let mut point = if vi_mode {
-            self.vi_mode_cursor.point
-        } else {
-            let mut point = self.cursor.point;
-            point.line += self.grid.display_offset();
-            point
-        };
+        let mut point = self.cursor.point;
+        point.line += self.grid.display_offset();
 
         // Cursor shape
         let hidden = !self.mode.contains(TermMode::SHOW_CURSOR) || point.line >= self.lines();
-        let cursor_style = if hidden && !vi_mode {
+        let cursor_style = if hidden {
             point.line = Line(0);
             CursorStyle::Hidden
         } else if !self.is_focused && config.cursor.unfocused_hollow() {
             CursorStyle::HollowBlock
         } else {
-            let cursor_style = self.cursor_style.unwrap_or(self.default_cursor_style);
-
-            if vi_mode {
-                self.vi_mode_cursor_style.unwrap_or(cursor_style)
-            } else {
-                cursor_style
-            }
+            self.cursor_style.unwrap_or(self.default_cursor_style)
         };
 
         // Cursor colors
-        let (text_color, cursor_color) = if vi_mode {
-            (config.vi_mode_cursor_text_color(), config.vi_mode_cursor_cursor_color())
-        } else {
-            let cursor_cursor_color = config.cursor_cursor_color().map(|c| self.colors[c]);
-            (config.cursor_text_color(), cursor_cursor_color)
-        };
+        let cursor_color = config.cursor_cursor_color().map(|c| self.colors[c]);
+        let text_color = config.cursor_text_color();
 
         // Expand across wide cell when inside wide char or spacer
         let buffer_point = self.visible_to_buffer(point);
@@ -1891,9 +1810,9 @@ impl<T: EventListener> Handler for Term<T> {
         self.color_modified[index] = false;
     }
 
-    /// Set the clipboard
+    /// Set the clipboard data.
     #[inline]
-    fn set_clipboard(&mut self, clipboard: u8, base64: &[u8]) {
+    fn clipboard_store(&mut self, clipboard: u8, base64: &[u8]) {
         let clipboard_type = match clipboard {
             b'c' => ClipboardType::Clipboard,
             b'p' | b's' => ClipboardType::Selection,
@@ -1901,25 +1820,24 @@ impl<T: EventListener> Handler for Term<T> {
         };
 
         if let Ok(bytes) = base64::decode(base64) {
-            if let Ok(text) = str::from_utf8(&bytes) {
-                self.clipboard.store(clipboard_type, text);
+            if let Ok(text) = String::from_utf8(bytes) {
+                self.event_proxy.send_event(Event::ClipboardStore(clipboard_type, text));
             }
         }
     }
 
-    /// Write clipboard data to child.
+    /// Write clipboard data to the PTY.
     #[inline]
-    fn write_clipboard<W: io::Write>(&mut self, clipboard: u8, writer: &mut W, terminator: &str) {
+    fn clipboard_load(&mut self, clipboard: u8, terminator: &str) {
         let clipboard_type = match clipboard {
             b'c' => ClipboardType::Clipboard,
             b'p' | b's' => ClipboardType::Selection,
             _ => return,
         };
 
-        let text = self.clipboard.load(clipboard_type);
-        let base64 = base64::encode(&text);
-        let escape = format!("\x1b]52;{};{}{}", clipboard as char, base64, terminator);
-        let _ = writer.write_all(escape.as_bytes());
+        // TODO: How do we want to handle terminator and return format?
+        // format!("\x1b]52;{};{}{}", clipboard as char, base64, terminator);
+        self.event_proxy.send_event(Event::ClipboardLoad(clipboard_type));
     }
 
     #[inline]
@@ -2231,6 +2149,35 @@ impl<T: EventListener> Handler for Term<T> {
     }
 }
 
+impl<T> Display for Term<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let rows = self.grid.len();
+
+        let mut text = String::with_capacity(rows * self.grid.num_cols().0);
+
+        let mut last_cell = Cell::default();
+
+        for row in (0..rows).rev() {
+            let row = &self.grid[row];
+            for cell in row {
+                cell.as_escape(&mut text, last_cell);
+
+                // TODO: Move this into as_escape?
+                text.push(cell.c);
+
+                for zerowidth in cell.extra.iter().take_while(|&&zw| zw != ' ') {
+                    text.push(*zerowidth);
+                }
+
+                last_cell = *cell;
+            }
+            text.push('\n');
+        }
+
+        write!(f, "{}", text)
+    }
+}
+
 struct TabStops {
     tabs: Vec<bool>,
 }
@@ -2286,7 +2233,6 @@ mod tests {
     use std::mem;
 
     use crate::ansi::{self, CharsetIndex, Handler, StandardCharset};
-    use crate::clipboard::Clipboard;
     use crate::config::MockConfig;
     use crate::event::{Event, EventListener};
     use crate::grid::{Grid, Scroll};
@@ -2310,7 +2256,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
         let mut grid: Grid<Cell> = Grid::new(Line(3), Column(5), 0, Cell::default());
         for i in 0..5 {
             for j in 0..2 {
@@ -2366,7 +2312,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
         let mut grid: Grid<Cell> = Grid::new(Line(1), Column(5), 0, Cell::default());
         for i in 0..5 {
             grid[Line(0)][Column(i)].c = 'a';
@@ -2395,7 +2341,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
         let mut grid: Grid<Cell> = Grid::new(Line(3), Column(3), 0, Cell::default());
         for l in 0..3 {
             if l != 1 {
@@ -2440,7 +2386,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
         let cursor = Point::new(Line(0), Column(0));
         term.configure_charset(CharsetIndex::G0, StandardCharset::SpecialCharacterAndLineDrawing);
         term.input('a');
@@ -2459,7 +2405,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
 
         // Add one line of scrollback
         term.grid.scroll_up(&(Line(0)..Line(1)), Line(1), &Cell::default());
@@ -2489,7 +2435,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
 
         // Create 10 lines of scrollback
         for _ in 0..19 {
@@ -2517,7 +2463,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
 
         // Create 10 lines of scrollback
         for _ in 0..19 {
@@ -2551,7 +2497,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
 
         // Create 10 lines of scrollback
         for _ in 0..19 {
@@ -2579,7 +2525,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
 
         // Create 10 lines of scrollback
         for _ in 0..19 {
@@ -2613,7 +2559,7 @@ mod tests {
             padding_y: 0.0,
             dpr: 1.0,
         };
-        let mut term = Term::new(&MockConfig::default(), &size, Clipboard::new_nop(), Mock);
+        let mut term = Term::new(&MockConfig::default(), &size, Mock);
 
         // Title None by default
         assert_eq!(term.title, None);
@@ -2666,9 +2612,7 @@ mod benches {
 
     use std::fs;
     use std::mem;
-    use std::path::Path;
 
-    use crate::clipboard::Clipboard;
     use crate::config::MockConfig;
     use crate::event::{Event, EventListener};
     use crate::grid::Grid;
@@ -2709,7 +2653,7 @@ mod benches {
 
         let config = MockConfig::default();
 
-        let mut terminal = Term::new(&config, &size, Clipboard::new_nop(), Mock);
+        let mut terminal = Term::new(&config, &size, Mock);
         mem::swap(&mut terminal.grid, &mut grid);
 
         b.iter(|| {

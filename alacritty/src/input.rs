@@ -34,7 +34,7 @@ use glutin::platform::macos::EventLoopWindowTargetExtMacOS;
 use glutin::window::CursorIcon;
 
 use alacritty_terminal::ansi::{ClearMode, Handler};
-use alacritty_terminal::clipboard::ClipboardType;
+use alacritty_terminal::clipboard::{Clipboard, ClipboardType};
 use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::index::{Column, Line, Point, Side};
@@ -43,9 +43,8 @@ use alacritty_terminal::selection::SelectionType;
 use alacritty_terminal::term::mode::TermMode;
 use alacritty_terminal::term::{SizeInfo, Term};
 use alacritty_terminal::util::start_daemon;
-use alacritty_terminal::vi_mode::ViMotion;
 
-use crate::config::{Action, Binding, Config, Key, ViAction};
+use crate::config::{Action, Binding, Config, Key};
 use crate::event::{ClickState, Mouse};
 use crate::url::{Url, Urls};
 use crate::window::Window;
@@ -91,8 +90,9 @@ pub trait ActionContext<T: EventListener> {
     fn config(&self) -> &Config;
     fn event_loop(&self) -> &EventLoopWindowTarget<Event>;
     fn urls(&self) -> &Urls;
+    fn clipboard(&mut self) -> &mut Clipboard;
     fn launch_url(&self, url: Url);
-    fn mouse_mode(&self) -> bool;
+    fn launch_pager(&mut self);
 }
 
 trait Execute<T: EventListener> {
@@ -107,27 +107,11 @@ impl<T, U: EventListener> Execute<U> for Binding<T> {
     }
 }
 
-impl Action {
-    fn toggle_selection<T, A>(ctx: &mut A, ty: SelectionType)
-    where
-        T: EventListener,
-        A: ActionContext<T>,
-    {
-        let cursor_point = ctx.terminal().vi_mode_cursor.point;
-        ctx.toggle_selection(ty, cursor_point, Side::Left);
-
-        // Make sure initial selection is not empty
-        if let Some(selection) = ctx.terminal_mut().selection_mut() {
-            selection.include_all();
-        }
-    }
-}
-
 impl<T: EventListener> Execute<T> for Action {
     #[inline]
     fn execute<A: ActionContext<T>>(&self, ctx: &mut A) {
-        match *self {
-            Action::Esc(ref s) => {
+        match self {
+            Action::Esc(s) => {
                 ctx.clear_selection();
                 ctx.scroll(Scroll::Bottom);
                 ctx.write_to_pty(s.clone().into_bytes())
@@ -136,14 +120,17 @@ impl<T: EventListener> Execute<T> for Action {
             #[cfg(not(any(target_os = "macos", windows)))]
             Action::CopySelection => ctx.copy_selection(ClipboardType::Selection),
             Action::Paste => {
-                let text = ctx.terminal_mut().clipboard().load(ClipboardType::Clipboard);
+                let text = ctx.clipboard().load(ClipboardType::Clipboard);
                 paste(ctx, &text);
             },
             Action::PasteSelection => {
-                let text = ctx.terminal_mut().clipboard().load(ClipboardType::Selection);
+                let text = ctx.clipboard().load(ClipboardType::Selection);
                 paste(ctx, &text);
             },
-            Action::Command(ref program, ref args) => {
+            Action::Command(cmd) => {
+                let program = cmd.program();
+                let args = cmd.args();
+
                 trace!("Running command {} with args {:?}", program, args);
 
                 match start_daemon(program, args) {
@@ -152,26 +139,6 @@ impl<T: EventListener> Execute<T> for Action {
                 }
             },
             Action::ClearSelection => ctx.clear_selection(),
-            Action::ToggleViMode => ctx.terminal_mut().toggle_vi_mode(),
-            Action::ViAction(ViAction::ToggleNormalSelection) => {
-                Self::toggle_selection(ctx, SelectionType::Simple)
-            },
-            Action::ViAction(ViAction::ToggleLineSelection) => {
-                Self::toggle_selection(ctx, SelectionType::Lines)
-            },
-            Action::ViAction(ViAction::ToggleBlockSelection) => {
-                Self::toggle_selection(ctx, SelectionType::Block)
-            },
-            Action::ViAction(ViAction::ToggleSemanticSelection) => {
-                Self::toggle_selection(ctx, SelectionType::Semantic)
-            },
-            Action::ViAction(ViAction::Open) => {
-                ctx.mouse_mut().block_url_launcher = false;
-                if let Some(url) = ctx.urls().find_at(ctx.terminal().vi_mode_cursor.point) {
-                    ctx.launch_url(url);
-                }
-            },
-            Action::ViMotion(motion) => ctx.terminal_mut().vi_motion(motion),
             Action::ToggleFullscreen => ctx.window_mut().toggle_fullscreen(),
             #[cfg(target_os = "macos")]
             Action::ToggleSimpleFullscreen => ctx.window_mut().toggle_simple_fullscreen(),
@@ -184,77 +151,24 @@ impl<T: EventListener> Execute<T> for Action {
             Action::IncreaseFontSize => ctx.change_font_size(FONT_SIZE_STEP),
             Action::DecreaseFontSize => ctx.change_font_size(FONT_SIZE_STEP * -1.),
             Action::ResetFontSize => ctx.reset_font_size(),
-            Action::ScrollPageUp => {
-                // Move vi mode cursor
-                let term = ctx.terminal_mut();
-                let scroll_lines = term.grid().num_lines().0 as isize;
-                term.vi_mode_cursor = term.vi_mode_cursor.scroll(term, scroll_lines);
-
-                ctx.scroll(Scroll::PageUp);
-            },
-            Action::ScrollPageDown => {
-                // Move vi mode cursor
-                let term = ctx.terminal_mut();
-                let scroll_lines = -(term.grid().num_lines().0 as isize);
-                term.vi_mode_cursor = term.vi_mode_cursor.scroll(term, scroll_lines);
-
-                ctx.scroll(Scroll::PageDown);
-            },
+            Action::ScrollPageUp => ctx.scroll(Scroll::PageUp),
+            Action::ScrollPageDown => ctx.scroll(Scroll::PageDown),
             Action::ScrollHalfPageUp => {
-                // Move vi mode cursor
-                let term = ctx.terminal_mut();
-                let scroll_lines = term.grid().num_lines().0 as isize / 2;
-                term.vi_mode_cursor = term.vi_mode_cursor.scroll(term, scroll_lines);
-
+                let scroll_lines = ctx.terminal_mut().grid().num_lines().0 as isize / 2;
                 ctx.scroll(Scroll::Lines(scroll_lines));
             },
             Action::ScrollHalfPageDown => {
-                // Move vi mode cursor
-                let term = ctx.terminal_mut();
-                let scroll_lines = -(term.grid().num_lines().0 as isize / 2);
-                term.vi_mode_cursor = term.vi_mode_cursor.scroll(term, scroll_lines);
-
+                let scroll_lines = -(ctx.terminal_mut().grid().num_lines().0 as isize / 2);
                 ctx.scroll(Scroll::Lines(scroll_lines));
             },
-            Action::ScrollLineUp => {
-                // Move vi mode cursor
-                let term = ctx.terminal();
-                if term.grid().display_offset() != term.grid().history_size()
-                    && term.vi_mode_cursor.point.line + 1 != term.grid().num_lines()
-                {
-                    ctx.terminal_mut().vi_mode_cursor.point.line += 1;
-                }
-
-                ctx.scroll(Scroll::Lines(1));
-            },
-            Action::ScrollLineDown => {
-                // Move vi mode cursor
-                if ctx.terminal().grid().display_offset() != 0
-                    && ctx.terminal().vi_mode_cursor.point.line.0 != 0
-                {
-                    ctx.terminal_mut().vi_mode_cursor.point.line -= 1;
-                }
-
-                ctx.scroll(Scroll::Lines(-1));
-            },
-            Action::ScrollToTop => {
-                ctx.scroll(Scroll::Top);
-
-                // Move vi mode cursor
-                ctx.terminal_mut().vi_mode_cursor.point.line = Line(0);
-                ctx.terminal_mut().vi_motion(ViMotion::FirstOccupied);
-            },
-            Action::ScrollToBottom => {
-                ctx.scroll(Scroll::Bottom);
-
-                // Move vi mode cursor
-                let term = ctx.terminal_mut();
-                term.vi_mode_cursor.point.line = term.grid().num_lines() - 1;
-                term.vi_motion(ViMotion::FirstOccupied);
-            },
+            Action::ScrollLineUp => ctx.scroll(Scroll::Lines(1)),
+            Action::ScrollLineDown => ctx.scroll(Scroll::Lines(-1)),
+            Action::ScrollToTop => ctx.scroll(Scroll::Top),
+            Action::ScrollToBottom => ctx.scroll(Scroll::Bottom),
             Action::ClearHistory => ctx.terminal_mut().clear_screen(ClearMode::Saved),
             Action::ClearLogNotice => ctx.pop_message(),
             Action::SpawnNewInstance => ctx.spawn_new_instance(),
+            Action::LaunchPager => ctx.launch_pager(),
             Action::ReceiveChar | Action::None => (),
         }
     }
@@ -337,15 +251,11 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
 
         let last_term_line = self.ctx.terminal().grid().num_lines() - 1;
         if self.ctx.mouse().left_button_state == ElementState::Pressed
-            && (self.ctx.modifiers().shift() || !self.ctx.mouse_mode())
+            && (self.ctx.modifiers().shift()
+                || !self.ctx.terminal().mode().contains(TermMode::MOUSE_MODE))
         {
             // Treat motion over message bar like motion over the last line
             let line = min(point.line, last_term_line);
-
-            // Move vi mode cursor to mouse cursor position
-            if self.ctx.terminal().mode().contains(TermMode::VI) {
-                self.ctx.terminal_mut().vi_mode_cursor.point = point;
-            }
 
             self.ctx.update_selection(Point { line, col: point.col }, cell_side);
         } else if inside_grid
@@ -457,7 +367,9 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
 
     fn on_mouse_press(&mut self, button: MouseButton) {
         // Handle mouse mode
-        if !self.ctx.modifiers().shift() && self.ctx.mouse_mode() {
+        if !self.ctx.modifiers().shift()
+            && self.ctx.terminal().mode().contains(TermMode::MOUSE_MODE)
+        {
             self.ctx.mouse_mut().click_state = ClickState::None;
 
             let code = match button {
@@ -477,7 +389,7 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
         }
     }
 
-    /// Handle left click selection and vi mode cursor movement.
+    /// Handle left click selection.
     fn on_left_click(&mut self) {
         // Calculate time since the last click to handle double/triple clicks in normal mode
         let now = Instant::now();
@@ -522,16 +434,12 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
                 ClickState::Click
             },
         };
-
-        // Move vi mode cursor to mouse position
-        if self.ctx.terminal().mode().contains(TermMode::VI) {
-            // Update Vi mode cursor position on click
-            self.ctx.terminal_mut().vi_mode_cursor.point = point;
-        }
     }
 
     fn on_mouse_release(&mut self, button: MouseButton) {
-        if !self.ctx.modifiers().shift() && self.ctx.mouse_mode() {
+        if !self.ctx.modifiers().shift()
+            && self.ctx.terminal().mode().contains(TermMode::MOUSE_MODE)
+        {
             let code = match button {
                 MouseButton::Left => 0,
                 MouseButton::Middle => 1,
@@ -572,7 +480,7 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
     fn scroll_terminal(&mut self, new_scroll_px: f64) {
         let height = f64::from(self.ctx.size_info().cell_height);
 
-        if self.ctx.mouse_mode() {
+        if self.ctx.terminal().mode().contains(TermMode::MOUSE_MODE) {
             self.ctx.mouse_mut().scroll_px += new_scroll_px;
 
             let code = if new_scroll_px > 0. { 64 } else { 65 };
@@ -610,27 +518,9 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
         } else {
             let multiplier = f64::from(self.ctx.config().scrolling.multiplier());
             self.ctx.mouse_mut().scroll_px += new_scroll_px * multiplier;
-
             let lines = self.ctx.mouse().scroll_px / height;
 
-            // Store absolute position of vi mode cursor
-            let term = self.ctx.terminal();
-            let absolute = term.visible_to_buffer(term.vi_mode_cursor.point);
-
             self.ctx.scroll(Scroll::Lines(lines as isize));
-
-            // Try to restore vi mode cursor position, to keep it above its previous content
-            let term = self.ctx.terminal_mut();
-            term.vi_mode_cursor.point = term.grid().clamp_buffer_to_visible(absolute);
-            term.vi_mode_cursor.point.col = absolute.col;
-
-            // Update selection
-            if term.mode().contains(TermMode::VI) {
-                let point = term.vi_mode_cursor.point;
-                if !self.ctx.selection_is_empty() {
-                    self.ctx.update_selection(point, Side::Right);
-                }
-            }
         }
 
         self.ctx.mouse_mut().scroll_px %= height;
@@ -667,7 +557,7 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
                 Ordering::Less => CursorIcon::Default,
                 Ordering::Equal => CursorIcon::Hand,
                 Ordering::Greater => {
-                    if self.ctx.mouse_mode() {
+                    if self.ctx.terminal().mode().contains(TermMode::MOUSE_MODE) {
                         CursorIcon::Default
                     } else {
                         CursorIcon::Text
@@ -710,7 +600,7 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
 
     /// Process a received character.
     pub fn received_char(&mut self, c: char) {
-        if *self.ctx.suppress_chars() || self.ctx.terminal().mode().contains(TermMode::VI) {
+        if *self.ctx.suppress_chars() {
             return;
         }
 
@@ -782,7 +672,7 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
     fn process_mouse_bindings(&mut self, button: MouseButton) {
         let mods = *self.ctx.modifiers();
         let mode = *self.ctx.terminal().mode();
-        let mouse_mode = self.ctx.mouse_mode();
+        let mouse_mode = self.ctx.terminal().mode().contains(TermMode::MOUSE_MODE);
 
         for i in 0..self.ctx.config().ui_config.mouse_bindings.len() {
             let mut binding = self.ctx.config().ui_config.mouse_bindings[i].clone();
@@ -840,7 +730,7 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
             return MouseState::MessageBar;
         }
 
-        let mouse_mode = self.ctx.mouse_mode();
+        let mouse_mode = self.ctx.terminal().mode().contains(TermMode::MOUSE_MODE);
 
         // Check for URL at mouse cursor
         let mods = *self.ctx.modifiers();
@@ -958,10 +848,6 @@ mod tests {
             } else {
                 None
             }
-        }
-
-        fn mouse_mode(&self) -> bool {
-            false
         }
 
         #[inline]

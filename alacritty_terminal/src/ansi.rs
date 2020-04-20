@@ -320,11 +320,11 @@ pub trait Handler {
     /// Reset an indexed color to original value
     fn reset_color(&mut self, _: usize) {}
 
-    /// Set the clipboard
-    fn set_clipboard(&mut self, _: u8, _: &[u8]) {}
+    /// Set the clipboard data.
+    fn clipboard_store(&mut self, _: u8, _: &[u8]) {}
 
-    /// Write clipboard data to child.
-    fn write_clipboard<W: io::Write>(&mut self, _: u8, _: &mut W, _: &str) {}
+    /// Write clipboard data to the PTY.
+    fn clipboard_load(&mut self, _: u8, _: &str) {}
 
     /// Run the decaln routine.
     fn decaln(&mut self) {}
@@ -623,6 +623,64 @@ pub enum Color {
     Indexed(u8),
 }
 
+impl Color {
+    pub fn as_escape(&self, buf: &mut String, last: Self, background: bool) {
+        if self == &last {
+            return;
+        }
+
+        if background {
+            buf.push('4');
+        } else {
+            buf.push('3');
+        }
+
+        match self {
+            Color::Named(color) => {
+                match color {
+                    NamedColor::Foreground | NamedColor::Background => *buf += "9;",
+                    &color => {
+                        // Colors outside of u8 range should never be set pre-rendering
+                        debug_assert!(color as usize <= std::u8::MAX as usize);
+
+                        u8_write_string(buf, color as u8);
+                        buf.push(';');
+                    },
+                }
+            },
+            Color::Spec(color) => {
+                *buf += "8;2;";
+                u8_write_string(buf, color.r);
+                buf.push(';');
+                u8_write_string(buf, color.g);
+                buf.push(';');
+                u8_write_string(buf, color.b);
+                buf.push(';');
+            },
+            Color::Indexed(color) => {
+                *buf += "8;5;";
+                u8_write_string(buf, *color);
+                buf.push(';');
+            },
+        }
+    }
+}
+
+fn u8_write_string(buf: &mut String, num: u8) {
+    let hundreds = num / 100;
+    if hundreds != 0 {
+        buf.push((hundreds + 48) as char);
+    }
+
+    let tens = (num - hundreds * 100) / 10;
+    if tens != 0 {
+        buf.push((tens + 48) as char);
+    }
+
+    let ones = num - hundreds * 100 - tens * 10;
+    buf.push((ones + 48) as char);
+}
+
 /// Terminal character attributes
 #[derive(Debug, Eq, PartialEq)]
 pub enum Attr {
@@ -860,8 +918,8 @@ where
 
                 let clipboard = params[1].get(0).unwrap_or(&b'c');
                 match params[2] {
-                    b"?" => self.handler.write_clipboard(*clipboard, writer, terminator),
-                    base64 => self.handler.set_clipboard(*clipboard, base64),
+                    b"?" => self.handler.clipboard_load(*clipboard, terminator),
+                    base64 => self.handler.clipboard_store(*clipboard, base64),
                 }
             },
 

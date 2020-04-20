@@ -13,7 +13,7 @@
 // limitations under the License.
 #![allow(clippy::enum_glob_use)]
 
-use std::fmt::{self, Debug, Display};
+use std::fmt;
 use std::str::FromStr;
 
 use glutin::event::VirtualKeyCode::*;
@@ -24,7 +24,7 @@ use serde::{Deserialize, Deserializer};
 use serde_yaml::Value as SerdeValue;
 
 use alacritty_terminal::term::TermMode;
-use alacritty_terminal::vi_mode::ViMotion;
+use alacritty_terminal::config::Program;
 
 /// Describes a state and action to take in that state
 ///
@@ -87,7 +87,7 @@ impl<T: Eq> Binding<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// Write an escape sequence.
     #[serde(skip)]
@@ -95,15 +95,7 @@ pub enum Action {
 
     /// Run given command.
     #[serde(skip)]
-    Command(String, Vec<String>),
-
-    /// Move vi mode cursor.
-    #[serde(skip)]
-    ViMotion(ViMotion),
-
-    /// Perform vi mode action.
-    #[serde(skip)]
-    ViAction(ViAction),
+    Command(Program),
 
     /// Paste contents of system clipboard.
     Paste,
@@ -179,11 +171,11 @@ pub enum Action {
     /// Clear active selection.
     ClearSelection,
 
-    /// Toggle vi mode.
-    ToggleViMode,
-
     /// Allow receiving char input.
     ReceiveChar,
+
+    /// Launch an embedded pager with the current scrollback.
+    LaunchPager,
 
     /// No action.
     None,
@@ -192,44 +184,6 @@ pub enum Action {
 impl From<&'static str> for Action {
     fn from(s: &'static str) -> Action {
         Action::Esc(s.into())
-    }
-}
-
-/// Display trait used for error logging.
-impl Display for Action {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Action::ViMotion(motion) => motion.fmt(f),
-            Action::ViAction(action) => action.fmt(f),
-            _ => write!(f, "{:?}", self),
-        }
-    }
-}
-
-/// Vi mode specific actions.
-#[derive(Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ViAction {
-    /// Toggle normal vi selection.
-    ToggleNormalSelection,
-    /// Toggle line vi selection.
-    ToggleLineSelection,
-    /// Toggle block vi selection.
-    ToggleBlockSelection,
-    /// Toggle semantic vi selection.
-    ToggleSemanticSelection,
-    /// Launch the URL below the vi mode cursor.
-    Open,
-}
-
-impl From<ViAction> for Action {
-    fn from(action: ViAction) -> Self {
-        Self::ViAction(action)
-    }
-}
-
-impl From<ViMotion> for Action {
-    fn from(motion: ViMotion) -> Self {
-        Self::ViMotion(motion)
     }
 }
 
@@ -293,7 +247,7 @@ macro_rules! bindings {
 pub fn default_mouse_bindings() -> Vec<MouseBinding> {
     bindings!(
         MouseBinding;
-        MouseButton::Middle, ~TermMode::VI; Action::PasteSelection;
+        MouseButton::Middle; Action::PasteSelection;
     )
 }
 
@@ -301,103 +255,57 @@ pub fn default_key_bindings() -> Vec<KeyBinding> {
     let mut bindings = bindings!(
         KeyBinding;
         Copy;  Action::Copy;
-        Copy,  +TermMode::VI; Action::ClearSelection;
-        Paste, ~TermMode::VI; Action::Paste;
+        Paste; Action::Paste;
         L, ModifiersState::CTRL; Action::ClearLogNotice;
-        L,    ModifiersState::CTRL,  ~TermMode::VI; Action::Esc("\x0c".into());
-        Tab,  ModifiersState::SHIFT, ~TermMode::VI; Action::Esc("\x1b[Z".into());
-        Back, ModifiersState::ALT,   ~TermMode::VI; Action::Esc("\x1b\x7f".into());
+        L,    ModifiersState::CTRL;  Action::Esc("\x0c".into());
+        Tab,  ModifiersState::SHIFT; Action::Esc("\x1b[Z".into());
+        Back, ModifiersState::ALT;   Action::Esc("\x1b\x7f".into());
         Home,     ModifiersState::SHIFT, ~TermMode::ALT_SCREEN; Action::ScrollToTop;
         End,      ModifiersState::SHIFT, ~TermMode::ALT_SCREEN; Action::ScrollToBottom;
         PageUp,   ModifiersState::SHIFT, ~TermMode::ALT_SCREEN; Action::ScrollPageUp;
         PageDown, ModifiersState::SHIFT, ~TermMode::ALT_SCREEN; Action::ScrollPageDown;
-        Home,     ModifiersState::SHIFT, +TermMode::ALT_SCREEN, ~TermMode::VI;
-            Action::Esc("\x1b[1;2H".into());
-        End,      ModifiersState::SHIFT, +TermMode::ALT_SCREEN, ~TermMode::VI;
-            Action::Esc("\x1b[1;2F".into());
-        PageUp,   ModifiersState::SHIFT, +TermMode::ALT_SCREEN, ~TermMode::VI;
-            Action::Esc("\x1b[5;2~".into());
-        PageDown, ModifiersState::SHIFT, +TermMode::ALT_SCREEN, ~TermMode::VI;
-            Action::Esc("\x1b[6;2~".into());
-        Home,  +TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1bOH".into());
-        Home,  ~TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1b[H".into());
-        End,   +TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1bOF".into());
-        End,   ~TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1b[F".into());
-        Up,    +TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1bOA".into());
-        Up,    ~TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1b[A".into());
-        Down,  +TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1bOB".into());
-        Down,  ~TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1b[B".into());
-        Right, +TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1bOC".into());
-        Right, ~TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1b[C".into());
-        Left,  +TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1bOD".into());
-        Left,  ~TermMode::APP_CURSOR, ~TermMode::VI; Action::Esc("\x1b[D".into());
-        Back,        ~TermMode::VI; Action::Esc("\x7f".into());
-        Insert,      ~TermMode::VI; Action::Esc("\x1b[2~".into());
-        Delete,      ~TermMode::VI; Action::Esc("\x1b[3~".into());
-        PageUp,      ~TermMode::VI; Action::Esc("\x1b[5~".into());
-        PageDown,    ~TermMode::VI; Action::Esc("\x1b[6~".into());
-        F1,          ~TermMode::VI; Action::Esc("\x1bOP".into());
-        F2,          ~TermMode::VI; Action::Esc("\x1bOQ".into());
-        F3,          ~TermMode::VI; Action::Esc("\x1bOR".into());
-        F4,          ~TermMode::VI; Action::Esc("\x1bOS".into());
-        F5,          ~TermMode::VI; Action::Esc("\x1b[15~".into());
-        F6,          ~TermMode::VI; Action::Esc("\x1b[17~".into());
-        F7,          ~TermMode::VI; Action::Esc("\x1b[18~".into());
-        F8,          ~TermMode::VI; Action::Esc("\x1b[19~".into());
-        F9,          ~TermMode::VI; Action::Esc("\x1b[20~".into());
-        F10,         ~TermMode::VI; Action::Esc("\x1b[21~".into());
-        F11,         ~TermMode::VI; Action::Esc("\x1b[23~".into());
-        F12,         ~TermMode::VI; Action::Esc("\x1b[24~".into());
-        F13,         ~TermMode::VI; Action::Esc("\x1b[25~".into());
-        F14,         ~TermMode::VI; Action::Esc("\x1b[26~".into());
-        F15,         ~TermMode::VI; Action::Esc("\x1b[28~".into());
-        F16,         ~TermMode::VI; Action::Esc("\x1b[29~".into());
-        F17,         ~TermMode::VI; Action::Esc("\x1b[31~".into());
-        F18,         ~TermMode::VI; Action::Esc("\x1b[32~".into());
-        F19,         ~TermMode::VI; Action::Esc("\x1b[33~".into());
-        F20,         ~TermMode::VI; Action::Esc("\x1b[34~".into());
-        NumpadEnter, ~TermMode::VI; Action::Esc("\n".into());
-        Space, ModifiersState::SHIFT | ModifiersState::CTRL, +TermMode::VI; Action::ScrollToBottom;
-        Space, ModifiersState::SHIFT | ModifiersState::CTRL; Action::ToggleViMode;
-        Escape,                        +TermMode::VI; Action::ClearSelection;
-        I,                             +TermMode::VI; Action::ScrollToBottom;
-        I,                             +TermMode::VI; Action::ToggleViMode;
-        Y,      ModifiersState::CTRL,  +TermMode::VI; Action::ScrollLineUp;
-        E,      ModifiersState::CTRL,  +TermMode::VI; Action::ScrollLineDown;
-        G,                             +TermMode::VI; Action::ScrollToTop;
-        G,      ModifiersState::SHIFT, +TermMode::VI; Action::ScrollToBottom;
-        B,      ModifiersState::CTRL,  +TermMode::VI; Action::ScrollPageUp;
-        F,      ModifiersState::CTRL,  +TermMode::VI; Action::ScrollPageDown;
-        U,      ModifiersState::CTRL,  +TermMode::VI; Action::ScrollHalfPageUp;
-        D,      ModifiersState::CTRL,  +TermMode::VI; Action::ScrollHalfPageDown;
-        Y,                             +TermMode::VI; Action::Copy;
-        Y,                             +TermMode::VI; Action::ClearSelection;
-        V,                             +TermMode::VI; ViAction::ToggleNormalSelection;
-        V,      ModifiersState::SHIFT, +TermMode::VI; ViAction::ToggleLineSelection;
-        V,      ModifiersState::CTRL,  +TermMode::VI; ViAction::ToggleBlockSelection;
-        V,      ModifiersState::ALT,   +TermMode::VI; ViAction::ToggleSemanticSelection;
-        Return,                        +TermMode::VI; ViAction::Open;
-        K,                             +TermMode::VI; ViMotion::Up;
-        J,                             +TermMode::VI; ViMotion::Down;
-        H,                             +TermMode::VI; ViMotion::Left;
-        L,                             +TermMode::VI; ViMotion::Right;
-        Up,                            +TermMode::VI; ViMotion::Up;
-        Down,                          +TermMode::VI; ViMotion::Down;
-        Left,                          +TermMode::VI; ViMotion::Left;
-        Right,                         +TermMode::VI; ViMotion::Right;
-        Key0,                          +TermMode::VI; ViMotion::First;
-        Key4,   ModifiersState::SHIFT, +TermMode::VI; ViMotion::Last;
-        Key6,   ModifiersState::SHIFT, +TermMode::VI; ViMotion::FirstOccupied;
-        H,      ModifiersState::SHIFT, +TermMode::VI; ViMotion::High;
-        M,      ModifiersState::SHIFT, +TermMode::VI; ViMotion::Middle;
-        L,      ModifiersState::SHIFT, +TermMode::VI; ViMotion::Low;
-        B,                             +TermMode::VI; ViMotion::SemanticLeft;
-        W,                             +TermMode::VI; ViMotion::SemanticRight;
-        E,                             +TermMode::VI; ViMotion::SemanticRightEnd;
-        B,      ModifiersState::SHIFT, +TermMode::VI; ViMotion::WordLeft;
-        W,      ModifiersState::SHIFT, +TermMode::VI; ViMotion::WordRight;
-        E,      ModifiersState::SHIFT, +TermMode::VI; ViMotion::WordRightEnd;
-        Key5,   ModifiersState::SHIFT, +TermMode::VI; ViMotion::Bracket;
+        Home,     ModifiersState::SHIFT, +TermMode::ALT_SCREEN; Action::Esc("\x1b[1;2H".into());
+        End,      ModifiersState::SHIFT, +TermMode::ALT_SCREEN; Action::Esc("\x1b[1;2F".into());
+        PageUp,   ModifiersState::SHIFT, +TermMode::ALT_SCREEN; Action::Esc("\x1b[5;2~".into());
+        PageDown, ModifiersState::SHIFT, +TermMode::ALT_SCREEN; Action::Esc("\x1b[6;2~".into());
+        Home,  +TermMode::APP_CURSOR; Action::Esc("\x1bOH".into());
+        Home,  ~TermMode::APP_CURSOR; Action::Esc("\x1b[H".into());
+        End,   +TermMode::APP_CURSOR; Action::Esc("\x1bOF".into());
+        End,   ~TermMode::APP_CURSOR; Action::Esc("\x1b[F".into());
+        Up,    +TermMode::APP_CURSOR; Action::Esc("\x1bOA".into());
+        Up,    ~TermMode::APP_CURSOR; Action::Esc("\x1b[A".into());
+        Down,  +TermMode::APP_CURSOR; Action::Esc("\x1bOB".into());
+        Down,  ~TermMode::APP_CURSOR; Action::Esc("\x1b[B".into());
+        Right, +TermMode::APP_CURSOR; Action::Esc("\x1bOC".into());
+        Right, ~TermMode::APP_CURSOR; Action::Esc("\x1b[C".into());
+        Left,  +TermMode::APP_CURSOR; Action::Esc("\x1bOD".into());
+        Left,  ~TermMode::APP_CURSOR; Action::Esc("\x1b[D".into());
+        Back;        Action::Esc("\x7f".into());
+        Insert;      Action::Esc("\x1b[2~".into());
+        Delete;      Action::Esc("\x1b[3~".into());
+        PageUp;      Action::Esc("\x1b[5~".into());
+        PageDown;    Action::Esc("\x1b[6~".into());
+        F1;          Action::Esc("\x1bOP".into());
+        F2;          Action::Esc("\x1bOQ".into());
+        F3;          Action::Esc("\x1bOR".into());
+        F4;          Action::Esc("\x1bOS".into());
+        F5;          Action::Esc("\x1b[15~".into());
+        F6;          Action::Esc("\x1b[17~".into());
+        F7;          Action::Esc("\x1b[18~".into());
+        F8;          Action::Esc("\x1b[19~".into());
+        F9;          Action::Esc("\x1b[20~".into());
+        F10;         Action::Esc("\x1b[21~".into());
+        F11;         Action::Esc("\x1b[23~".into());
+        F12;         Action::Esc("\x1b[24~".into());
+        F13;         Action::Esc("\x1b[25~".into());
+        F14;         Action::Esc("\x1b[26~".into());
+        F15;         Action::Esc("\x1b[28~".into());
+        F16;         Action::Esc("\x1b[29~".into());
+        F17;         Action::Esc("\x1b[31~".into());
+        F18;         Action::Esc("\x1b[32~".into());
+        F19;         Action::Esc("\x1b[33~".into());
+        F20;         Action::Esc("\x1b[34~".into());
+        NumpadEnter; Action::Esc("\n".into());
     );
 
     //   Code     Modifiers
@@ -426,31 +334,31 @@ pub fn default_key_bindings() -> Vec<KeyBinding> {
         let modifiers_code = index + 2;
         bindings.extend(bindings!(
             KeyBinding;
-            Delete, mods, ~TermMode::VI; Action::Esc(format!("\x1b[3;{}~", modifiers_code));
-            Up,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}A", modifiers_code));
-            Down,   mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}B", modifiers_code));
-            Right,  mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}C", modifiers_code));
-            Left,   mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}D", modifiers_code));
-            F1,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}P", modifiers_code));
-            F2,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}Q", modifiers_code));
-            F3,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}R", modifiers_code));
-            F4,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}S", modifiers_code));
-            F5,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[15;{}~", modifiers_code));
-            F6,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[17;{}~", modifiers_code));
-            F7,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[18;{}~", modifiers_code));
-            F8,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[19;{}~", modifiers_code));
-            F9,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[20;{}~", modifiers_code));
-            F10,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[21;{}~", modifiers_code));
-            F11,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[23;{}~", modifiers_code));
-            F12,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[24;{}~", modifiers_code));
-            F13,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[25;{}~", modifiers_code));
-            F14,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[26;{}~", modifiers_code));
-            F15,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[28;{}~", modifiers_code));
-            F16,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[29;{}~", modifiers_code));
-            F17,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[31;{}~", modifiers_code));
-            F18,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[32;{}~", modifiers_code));
-            F19,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[33;{}~", modifiers_code));
-            F20,    mods, ~TermMode::VI; Action::Esc(format!("\x1b[34;{}~", modifiers_code));
+            Delete, mods; Action::Esc(format!("\x1b[3;{}~", modifiers_code));
+            Up,     mods; Action::Esc(format!("\x1b[1;{}A", modifiers_code));
+            Down,   mods; Action::Esc(format!("\x1b[1;{}B", modifiers_code));
+            Right,  mods; Action::Esc(format!("\x1b[1;{}C", modifiers_code));
+            Left,   mods; Action::Esc(format!("\x1b[1;{}D", modifiers_code));
+            F1,     mods; Action::Esc(format!("\x1b[1;{}P", modifiers_code));
+            F2,     mods; Action::Esc(format!("\x1b[1;{}Q", modifiers_code));
+            F3,     mods; Action::Esc(format!("\x1b[1;{}R", modifiers_code));
+            F4,     mods; Action::Esc(format!("\x1b[1;{}S", modifiers_code));
+            F5,     mods; Action::Esc(format!("\x1b[15;{}~", modifiers_code));
+            F6,     mods; Action::Esc(format!("\x1b[17;{}~", modifiers_code));
+            F7,     mods; Action::Esc(format!("\x1b[18;{}~", modifiers_code));
+            F8,     mods; Action::Esc(format!("\x1b[19;{}~", modifiers_code));
+            F9,     mods; Action::Esc(format!("\x1b[20;{}~", modifiers_code));
+            F10,    mods; Action::Esc(format!("\x1b[21;{}~", modifiers_code));
+            F11,    mods; Action::Esc(format!("\x1b[23;{}~", modifiers_code));
+            F12,    mods; Action::Esc(format!("\x1b[24;{}~", modifiers_code));
+            F13,    mods; Action::Esc(format!("\x1b[25;{}~", modifiers_code));
+            F14,    mods; Action::Esc(format!("\x1b[26;{}~", modifiers_code));
+            F15,    mods; Action::Esc(format!("\x1b[28;{}~", modifiers_code));
+            F16,    mods; Action::Esc(format!("\x1b[29;{}~", modifiers_code));
+            F17,    mods; Action::Esc(format!("\x1b[31;{}~", modifiers_code));
+            F18,    mods; Action::Esc(format!("\x1b[32;{}~", modifiers_code));
+            F19,    mods; Action::Esc(format!("\x1b[33;{}~", modifiers_code));
+            F20,    mods; Action::Esc(format!("\x1b[34;{}~", modifiers_code));
         ));
 
         // We're adding the following bindings with `Shift` manually above, so skipping them here
@@ -458,11 +366,11 @@ pub fn default_key_bindings() -> Vec<KeyBinding> {
         if modifiers_code != 2 {
             bindings.extend(bindings!(
                 KeyBinding;
-                Insert,   mods, ~TermMode::VI; Action::Esc(format!("\x1b[2;{}~", modifiers_code));
-                PageUp,   mods, ~TermMode::VI; Action::Esc(format!("\x1b[5;{}~", modifiers_code));
-                PageDown, mods, ~TermMode::VI; Action::Esc(format!("\x1b[6;{}~", modifiers_code));
-                End,      mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}F", modifiers_code));
-                Home,     mods, ~TermMode::VI; Action::Esc(format!("\x1b[1;{}H", modifiers_code));
+                Insert,   mods; Action::Esc(format!("\x1b[2;{}~", modifiers_code));
+                PageUp,   mods; Action::Esc(format!("\x1b[5;{}~", modifiers_code));
+                PageDown, mods; Action::Esc(format!("\x1b[6;{}~", modifiers_code));
+                End,      mods; Action::Esc(format!("\x1b[1;{}F", modifiers_code));
+                Home,     mods; Action::Esc(format!("\x1b[1;{}H", modifiers_code));
             ));
         }
     }
@@ -476,10 +384,9 @@ pub fn default_key_bindings() -> Vec<KeyBinding> {
 fn common_keybindings() -> Vec<KeyBinding> {
     bindings!(
         KeyBinding;
-        V,        ModifiersState::CTRL | ModifiersState::SHIFT, ~TermMode::VI; Action::Paste;
+        V,        ModifiersState::CTRL | ModifiersState::SHIFT; Action::Paste;
         C,        ModifiersState::CTRL | ModifiersState::SHIFT; Action::Copy;
-        C,        ModifiersState::CTRL | ModifiersState::SHIFT, +TermMode::VI; Action::ClearSelection;
-        Insert,   ModifiersState::SHIFT, ~TermMode::VI; Action::PasteSelection;
+        Insert,   ModifiersState::SHIFT; Action::PasteSelection;
         Key0,     ModifiersState::CTRL;  Action::ResetFontSize;
         Equals,   ModifiersState::CTRL;  Action::IncreaseFontSize;
         Add,      ModifiersState::CTRL;  Action::IncreaseFontSize;
@@ -511,14 +418,13 @@ pub fn platform_key_bindings() -> Vec<KeyBinding> {
         Equals, ModifiersState::LOGO; Action::IncreaseFontSize;
         Add,    ModifiersState::LOGO; Action::IncreaseFontSize;
         Minus,  ModifiersState::LOGO; Action::DecreaseFontSize;
-        Insert, ModifiersState::SHIFT, ~TermMode::VI; Action::Esc("\x1b[2;2~".into());
-        K, ModifiersState::LOGO, ~TermMode::VI; Action::Esc("\x0c".into());
-        V, ModifiersState::LOGO, ~TermMode::VI; Action::Paste;
+        Insert, ModifiersState::SHIFT; Action::Esc("\x1b[2;2~".into());
+        K, ModifiersState::LOGO; Action::Esc("\x0c".into());
+        V, ModifiersState::LOGO; Action::Paste;
         N, ModifiersState::LOGO; Action::SpawnNewInstance;
         F, ModifiersState::CTRL | ModifiersState::LOGO; Action::ToggleFullscreen;
         K, ModifiersState::LOGO; Action::ClearHistory;
         C, ModifiersState::LOGO; Action::Copy;
-        C, ModifiersState::LOGO, +TermMode::VI; Action::ClearSelection;
         H, ModifiersState::LOGO; Action::Hide;
         M, ModifiersState::LOGO; Action::Minimize;
         Q, ModifiersState::LOGO; Action::Quit;
@@ -571,7 +477,7 @@ impl<'a> Deserialize<'a> for ModeWrapper {
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(
-                    "a combination of AppCursor | AppKeypad | Alt | Vi, possibly with negation (~)",
+                    "a combination of AppCursor | AppKeypad | Alt | possibly with negation (~)",
                 )
             }
 
@@ -589,8 +495,6 @@ impl<'a> Deserialize<'a> for ModeWrapper {
                         "~appkeypad" => res.not_mode |= TermMode::APP_KEYPAD,
                         "alt" => res.mode |= TermMode::ALT_SCREEN,
                         "~alt" => res.not_mode |= TermMode::ALT_SCREEN,
-                        "vi" => res.mode |= TermMode::VI,
-                        "~vi" => res.not_mode |= TermMode::VI,
                         _ => return Err(E::invalid_value(Unexpected::Str(modifier), &self)),
                     }
                 }
@@ -760,7 +664,7 @@ impl<'a> Deserialize<'a> for RawBinding {
                 let mut mode: Option<TermMode> = None;
                 let mut not_mode: Option<TermMode> = None;
                 let mut mouse: Option<MouseButton> = None;
-                let mut command: Option<CommandWrapper> = None;
+                let mut command: Option<Program> = None;
 
                 use de::Error;
 
@@ -807,36 +711,7 @@ impl<'a> Deserialize<'a> for RawBinding {
                                 return Err(<V::Error as Error>::duplicate_field("action"));
                             }
 
-                            let value = map.next_value::<SerdeValue>()?;
-
-                            action = if let Ok(vi_action) = ViAction::deserialize(value.clone()) {
-                                Some(vi_action.into())
-                            } else if let Ok(vi_motion) = ViMotion::deserialize(value.clone()) {
-                                Some(vi_motion.into())
-                            } else {
-                                match Action::deserialize(value.clone()).map_err(V::Error::custom) {
-                                    Ok(action) => Some(action),
-                                    Err(err) => {
-                                        let value = match value {
-                                            SerdeValue::String(string) => string,
-                                            SerdeValue::Mapping(map) if map.len() == 1 => {
-                                                match map.into_iter().next() {
-                                                    Some((
-                                                        SerdeValue::String(string),
-                                                        SerdeValue::Null,
-                                                    )) => string,
-                                                    _ => return Err(err),
-                                                }
-                                            },
-                                            _ => return Err(err),
-                                        };
-                                        return Err(V::Error::custom(format!(
-                                            "unknown keyboard action `{}`",
-                                            value
-                                        )));
-                                    },
-                                }
-                            };
+                            action = Some(map.next_value::<Action>()?);
                         },
                         Field::Chars => {
                             if chars.is_some() {
@@ -857,7 +732,7 @@ impl<'a> Deserialize<'a> for RawBinding {
                                 return Err(<V::Error as Error>::duplicate_field("command"));
                             }
 
-                            command = Some(map.next_value::<CommandWrapper>()?);
+                            command = Some(map.next_value::<Program>()?);
                         },
                     }
                 }
@@ -867,24 +742,9 @@ impl<'a> Deserialize<'a> for RawBinding {
                 let mods = mods.unwrap_or_else(ModifiersState::default);
 
                 let action = match (action, chars, command) {
-                    (Some(action @ Action::ViMotion(_)), None, None)
-                    | (Some(action @ Action::ViAction(_)), None, None) => {
-                        if !mode.intersects(TermMode::VI) || not_mode.intersects(TermMode::VI) {
-                            return Err(V::Error::custom(format!(
-                                "action `{}` is only available in vi mode, try adding `mode: Vi`",
-                                action,
-                            )));
-                        }
-                        action
-                    },
                     (Some(action), None, None) => action,
                     (None, Some(chars), None) => Action::Esc(chars),
-                    (None, None, Some(cmd)) => match cmd {
-                        CommandWrapper::Just(program) => Action::Command(program, vec![]),
-                        CommandWrapper::WithArgs { program, args } => {
-                            Action::Command(program, args)
-                        },
-                    },
+                    (None, None, Some(program)) => Action::Command(program),
                     _ => {
                         return Err(V::Error::custom(
                             "must specify exactly one of chars, action or command",
@@ -923,33 +783,6 @@ impl<'a> Deserialize<'a> for KeyBinding {
         let raw = RawBinding::deserialize(deserializer)?;
         raw.into_key_binding()
             .map_err(|_| D::Error::custom("expected key binding, got mouse binding"))
-    }
-}
-
-#[serde(untagged)]
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-pub enum CommandWrapper {
-    Just(String),
-    WithArgs {
-        program: String,
-        #[serde(default)]
-        args: Vec<String>,
-    },
-}
-
-impl CommandWrapper {
-    pub fn program(&self) -> &str {
-        match self {
-            CommandWrapper::Just(program) => program,
-            CommandWrapper::WithArgs { program, .. } => program,
-        }
-    }
-
-    pub fn args(&self) -> &[String] {
-        match self {
-            CommandWrapper::Just(_) => &[],
-            CommandWrapper::WithArgs { args, .. } => args,
-        }
     }
 }
 

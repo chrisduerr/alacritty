@@ -1,22 +1,29 @@
 use log::error;
 use serde::{Deserialize, Deserializer};
 
-use alacritty_terminal::config::{failure_default, LOG_TARGET_CONFIG};
+use alacritty_terminal::config::{failure_default, LOG_TARGET_CONFIG, Program};
 
 use crate::config::bindings::{self, Binding, KeyBinding, MouseBinding};
 use crate::config::mouse::Mouse;
 
+pub const PAGER_REPLACEMENT_TEXT: &str = "{LINE_NUMBER}";
+
+#[serde(default)]
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct UIConfig {
-    #[serde(default, deserialize_with = "failure_default")]
+    #[serde(deserialize_with = "failure_default")]
     pub mouse: Mouse,
 
+    /// Pager program to embed inside of Alacritty.
+    #[serde(deserialize_with = "deserialize_pager")]
+    pub pager: Program,
+
     /// Keybindings
-    #[serde(default = "default_key_bindings", deserialize_with = "deserialize_key_bindings")]
+    #[serde(deserialize_with = "deserialize_key_bindings")]
     pub key_bindings: Vec<KeyBinding>,
 
     /// Bindings for the mouse
-    #[serde(default = "default_mouse_bindings", deserialize_with = "deserialize_mouse_bindings")]
+    #[serde(deserialize_with = "deserialize_mouse_bindings")]
     pub mouse_bindings: Vec<MouseBinding>,
 }
 
@@ -24,10 +31,33 @@ impl Default for UIConfig {
     fn default() -> Self {
         UIConfig {
             mouse: Mouse::default(),
+            pager: default_pager(),
             key_bindings: default_key_bindings(),
             mouse_bindings: default_mouse_bindings(),
         }
     }
+}
+
+fn deserialize_pager<'a, D>(deserializer: D) -> Result<Program, D::Error>
+where
+    D: Deserializer<'a>,
+{
+    let value = serde_yaml::Value::deserialize(deserializer)?;
+
+    match Program::deserialize(value) {
+        Ok(wrapper) => Ok(wrapper),
+        Err(err) => {
+            error!(target: LOG_TARGET_CONFIG, "Problem with config: {}; using pager less", err);
+            Ok(default_pager())
+        },
+    }
+}
+
+fn default_pager() -> Program {
+    return Program::WithArgs {
+        program: String::from("less"),
+        args: vec![String::from("-r"), format!("+{}", PAGER_REPLACEMENT_TEXT)],
+    };
 }
 
 fn default_key_bindings() -> Vec<KeyBinding> {
