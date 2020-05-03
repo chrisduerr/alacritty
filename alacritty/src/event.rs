@@ -759,18 +759,15 @@ impl Processor {
         let mut terminal = Arc::new(FairMutex::new(terminal));
 
         // Launch a new PTY with the configured pager as shell
-        println!("STARTING CONVERSION TO TEXT");
-        let start_time = Instant::now();
-        // TODO: Inline again
-        let text = term.to_string();
-        println!("FINISHED CONVERSION TO TEXT IN {:?}", Instant::now().duration_since(start_time));
-        let pty = tty::new(
+        let mut pty = tty::new(
             Some(&pager),
-            Some(text),
             None,
             &size_info,
-            self.display.window.x11_window_id()
+            self.display.window.x11_window_id(),
+            true,
         );
+
+        let stdin = pty.take_stdin();
 
         // Spawn the PTY event loop
         let event_loop = PtyEventLoop::new(
@@ -784,6 +781,20 @@ impl Processor {
         let mut notifier = event_loop::Notifier(loop_tx.clone());
 
         event_loop.spawn();
+
+        println!("STARTING CONVERSION TO TEXT");
+        let start_time1 = Instant::now();
+        // TODO: Inline again
+        let text = term.to_string();
+        println!("FINISHED CONVERSION TO TEXT IN {:?}", Instant::now().duration_since(start_time1));
+
+        // Write grid history to pager
+        if let Some(mut stdin) = stdin {
+            let start_time = Instant::now();
+            let _ = stdin.write_all(text.as_bytes());
+            println!("TIME TO WRITE {:?}", Instant::now().duration_since(start_time));
+            println!("TOTAL {:?}", Instant::now().duration_since(start_time1));
+        }
 
         drop(term);
 

@@ -172,8 +172,21 @@ impl Cell {
         *buf += "\x1b[";
         let empty_len = buf.len();
 
-        self.fg.as_escape(buf, last.fg, false);
-        self.bg.as_escape(buf, last.bg, true);
+        self.fg.as_escape(buf, last.fg, true);
+        self.bg.as_escape(buf, last.bg, false);
+
+        if self.flags == last.flags {
+            if buf.len() == empty_len {
+                // Remove previously added CSI introducer if nothing changed
+                buf.truncate(empty_len - 2);
+            } else {
+                unsafe {
+                    let last_byte = buf.len() - 1;
+                    buf.as_bytes_mut()[last_byte] = b'm';
+                }
+            }
+            return;
+        }
 
         let last_bold = last.flags.contains(Flags::BOLD);
         let last_dim = last.flags.contains(Flags::DIM);

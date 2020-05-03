@@ -2162,7 +2162,6 @@ impl<T> Display for Term<T> {
             for cell in row {
                 cell.as_escape(&mut text, last_cell);
 
-                // TODO: Move this into as_escape?
                 text.push(cell.c);
 
                 for zerowidth in cell.extra.iter().take_while(|&&zw| zw != ' ') {

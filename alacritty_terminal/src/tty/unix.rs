@@ -16,11 +16,11 @@
 
 use std::ffi::CStr;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io;
 use std::mem::MaybeUninit;
 use std::os::unix::process::CommandExt;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, Stdio, ChildStdin};
 use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::path::PathBuf;
@@ -142,10 +142,10 @@ pub struct Pty {
 /// Create a new tty and return a handle to interact with it.
 pub fn new(
     shell: Option<&Program>,
-    stdin: Option<String>,
     working_directory: Option<&PathBuf>,
     size: &SizeInfo,
     window_id: Option<usize>,
+    pipe_stdin: bool,
 ) -> Pty {
     let win_size = size.to_winsize();
     let mut buf = [0; 1024];
@@ -180,8 +180,7 @@ pub fn new(
     builder.stderr(unsafe { Stdio::from_raw_fd(slave) });
     builder.stdout(unsafe { Stdio::from_raw_fd(slave) });
 
-    // Only hookup stdin to slave when not passing any stdin
-    if stdin.is_some() {
+    if pipe_stdin {
         builder.stdin(Stdio::piped());
     } else {
         builder.stdin(unsafe { Stdio::from_raw_fd(slave) });
@@ -231,7 +230,7 @@ pub fn new(
     let signals = Signals::new(&[sighook::SIGCHLD]).expect("error preparing signal handling");
 
     match builder.spawn() {
-        Ok(mut child) => {
+        Ok(child) => {
             // Remember child PID so other modules can use it
             PID.store(child.id() as usize, Ordering::Relaxed);
 
@@ -239,16 +238,6 @@ pub fn new(
                 // Maybe this should be done outside of this function so nonblocking
                 // isn't forced upon consumers. Although maybe it should be?
                 set_nonblocking(master);
-            }
-
-            // Write data to child's stdin
-            if let (Some(mut stdin), Some(text)) = (child.stdin.take(), stdin) {
-                println!("BEFORE WRITE");
-                let bytes = text.as_bytes();
-                println!("BYTES LEN: {}", bytes.len());
-                // TODO: Switch this to write()
-                let _ = stdin.write_all(bytes).unwrap();
-                println!("AFTER WRITE");
             }
 
             let mut pty = Pty {
@@ -262,6 +251,12 @@ pub fn new(
             pty
         },
         Err(err) => die!("Failed to spawn command '{}': {}", shell.program(), err),
+    }
+}
+
+impl Pty {
+    pub fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.child.stdin.take()
     }
 }
 

@@ -154,10 +154,10 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     // reading/writing to the shell.
     let pty = tty::new(
         config.shell.as_ref(),
-        None,
         config.working_directory.as_ref(),
         &display.size_info,
-        display.window.x11_window_id()
+        display.window.x11_window_id(),
+        false,
     );
 
     // Create the terminal
