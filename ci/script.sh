@@ -14,3 +14,15 @@ if [ -n "$TRAVIS_TAG" ]; then
 else
     cargo test
 fi
+
+# Output binary name
+name="Alacritty-${TRAVIS_TAG}"
+
+# Everything in this directory will be offered as download for the release
+mkdir "./target/deploy"
+
+rm -rf "./target/release" \
+    && make dmg \
+    && mv "./target/release/osx/Alacritty.dmg" "./target/deploy/${name}.dmg"
+
+ls -lah target/release/osx/Alacritty.app/Contents/Resources/*
