@@ -811,14 +811,6 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
 
     /// Cleanup the search state.
     fn exit_search(&mut self) {
-        // Move vi cursor down if resize will pull content from history.
-        if self.terminal.history_size() != 0
-            && self.terminal.grid().display_offset() == 0
-            && self.terminal.screen_lines() > self.terminal.vi_mode_cursor.point.line + 1
-        {
-            self.terminal.vi_mode_cursor.point.line += 1;
-        }
-
         self.display_update_pending.dirty = true;
         self.search_state.history_index = None;
         *self.dirty = true;

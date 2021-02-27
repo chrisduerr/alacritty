@@ -51,18 +51,11 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         self.raw.grow_visible_lines(new_line_count);
         self.lines = new_line_count;
 
-        let history_size = self.history_size();
-        let from_history = min(history_size, lines_added.0);
+        // TODO: Pull down when the cursor is at the bottom?
 
+        // TODO
         // Move existing lines up for every line that couldn't be pulled from history.
-        if from_history != lines_added.0 {
-            let delta = lines_added - from_history;
-            self.scroll_up(&(Line(0)..new_line_count), delta);
-        }
-
-        // Move cursor down for every line pulled from history.
-        self.saved_cursor.point.line += from_history;
-        self.cursor.point.line += from_history;
+        self.scroll_up(&(Line(0)..new_line_count), lines_added);
 
         self.display_offset = self.display_offset.saturating_sub(*lines_added);
         self.decrease_scroll_limit(*lines_added);
