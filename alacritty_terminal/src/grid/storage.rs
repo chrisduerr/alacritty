@@ -139,14 +139,6 @@ impl<T> Storage<T> {
         self.len
     }
 
-    #[inline]
-    pub fn swap_lines(&mut self, a: Line, b: Line) {
-        let offset = self.inner.len() + self.zero + *self.visible_lines - 1;
-        let a = (offset - *a) % self.inner.len();
-        let b = (offset - *b) % self.inner.len();
-        self.inner.swap(a, b);
-    }
-
     /// Swap implementation for Row<T>.
     ///
     /// Exploits the known size of Row<T> to produce a slightly more efficient

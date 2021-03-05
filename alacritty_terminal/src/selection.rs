@@ -11,7 +11,7 @@ use std::ops::{Bound, Range, RangeBounds};
 
 use crate::ansi::CursorShape;
 use crate::grid::{Dimensions, GridCell, Indexed};
-use crate::index::{Column, Line, Point, Side};
+use crate::index::{Column, Point, Side};
 use crate::term::cell::{Cell, Flags};
 use crate::term::{RenderableCursor, Term};
 
@@ -131,13 +131,13 @@ impl Selection {
     pub fn rotate<D: Dimensions>(
         mut self,
         dimensions: &D,
-        range: &Range<Line>,
+        range: &Range<usize>,
         delta: isize,
     ) -> Option<Selection> {
         let num_lines = dimensions.screen_lines().0;
         let num_cols = dimensions.cols().0;
-        let range_bottom = range.start.0;
-        let range_top = range.end.0;
+        let range_bottom = range.start;
+        let range_top = range.end;
 
         let (mut start, mut end) = (&mut self.region.start, &mut self.region.end);
         if Selection::points_need_swap(start.point, end.point) {
@@ -552,7 +552,7 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Lines, Point::new(0, Column(1)), Side::Left);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(&size, &(Line(0)..size.0), 7).unwrap();
+        selection = selection.rotate(&size, &(0..(size.0).0), 7).unwrap();
 
         assert_eq!(selection.to_range(&term(*size.0, *size.1)).unwrap(), SelectionRange {
             start: Point::new(9, Column(0)),
@@ -567,7 +567,7 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Semantic, Point::new(0, Column(3)), Side::Left);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(&size, &(Line(0)..size.0), 7).unwrap();
+        selection = selection.rotate(&size, &(0..(size.0).0), 7).unwrap();
 
         assert_eq!(selection.to_range(&term(*size.0, *size.1)).unwrap(), SelectionRange {
             start: Point::new(9, Column(0)),
@@ -582,7 +582,7 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Simple, Point::new(0, Column(3)), Side::Right);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(&size, &(Line(0)..size.0), 7).unwrap();
+        selection = selection.rotate(&size, &(0..(size.0).0), 7).unwrap();
 
         assert_eq!(selection.to_range(&term(*size.0, *size.1)).unwrap(), SelectionRange {
             start: Point::new(9, Column(0)),
@@ -597,7 +597,7 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Block, Point::new(0, Column(3)), Side::Right);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(&size, &(Line(0)..size.0), 7).unwrap();
+        selection = selection.rotate(&size, &(0..(size.0).0), 7).unwrap();
 
         assert_eq!(selection.to_range(&term(*size.0, *size.1)).unwrap(), SelectionRange {
             start: Point::new(9, Column(2)),
@@ -640,7 +640,7 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Simple, Point::new(2, Column(3)), Side::Right);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(&size, &(Line(1)..(size.0 - 1)), 4).unwrap();
+        selection = selection.rotate(&size, &(1..(size.0 - 1).0), 4).unwrap();
 
         assert_eq!(selection.to_range(&term(*size.0, *size.1)).unwrap(), SelectionRange {
             start: Point::new(8, Column(0)),
@@ -655,7 +655,7 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Simple, Point::new(5, Column(3)), Side::Right);
         selection.update(Point::new(8, Column(1)), Side::Left);
-        selection = selection.rotate(&size, &(Line(1)..(size.0 - 1)), -5).unwrap();
+        selection = selection.rotate(&size, &(1..(size.0 - 1).0), -5).unwrap();
 
         assert_eq!(selection.to_range(&term(*size.0, *size.1)).unwrap(), SelectionRange {
             start: Point::new(3, Column(1)),
@@ -670,7 +670,7 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Block, Point::new(2, Column(3)), Side::Right);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(&size, &(Line(1)..(size.0 - 1)), 4).unwrap();
+        selection = selection.rotate(&size, &(1..(size.0 - 1).0), 4).unwrap();
 
         assert_eq!(selection.to_range(&term(*size.0, *size.1)).unwrap(), SelectionRange {
             start: Point::new(8, Column(2)),

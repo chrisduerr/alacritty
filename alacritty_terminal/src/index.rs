@@ -3,7 +3,7 @@
 /// Indexing types and implementations for Grid and Line.
 use std::cmp::{Ord, Ordering};
 use std::fmt;
-use std::ops::{self, Add, AddAssign, Deref, Range, Sub, SubAssign};
+use std::ops::{self, Add, AddAssign, Deref, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
@@ -323,18 +323,6 @@ macro_rules! sub {
     };
 }
 
-/// This exists because we can't implement Iterator on Range
-/// and the existing impl needs the unstable Step trait
-/// This should be removed and replaced with a Step impl
-/// in the ops macro when `step_by` is stabilized.
-pub struct IndexRange<T>(pub Range<T>);
-
-impl<T> From<Range<T>> for IndexRange<T> {
-    fn from(from: Range<T>) -> Self {
-        IndexRange(from)
-    }
-}
-
 macro_rules! ops {
     ($ty:ty, $construct:expr) => {
         add!($ty, $construct);
@@ -342,63 +330,6 @@ macro_rules! ops {
         deref!($ty, usize);
         forward_ref_binop!(impl Add, add for $ty, $ty);
 
-        impl $ty {
-            #[inline]
-            fn steps_between(start: $ty, end: $ty, by: $ty) -> Option<usize> {
-                if by == $construct(0) { return None; }
-                if start < end {
-                    // Note: We assume $t <= usize here.
-                    let diff = (end - start).0;
-                    let by = by.0;
-                    if diff % by > 0 {
-                        Some(diff / by + 1)
-                    } else {
-                        Some(diff / by)
-                    }
-                } else {
-                    Some(0)
-                }
-            }
-
-            #[inline]
-            fn steps_between_by_one(start: $ty, end: $ty) -> Option<usize> {
-                Self::steps_between(start, end, $construct(1))
-            }
-        }
-
-        impl Iterator for IndexRange<$ty> {
-            type Item = $ty;
-            #[inline]
-            fn next(&mut self) -> Option<$ty> {
-                if self.0.start < self.0.end {
-                    let old = self.0.start;
-                    self.0.start = old + 1;
-                    Some(old)
-                } else {
-                    None
-                }
-            }
-            #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                match Self::Item::steps_between_by_one(self.0.start, self.0.end) {
-                    Some(hint) => (hint, Some(hint)),
-                    None => (0, None)
-                }
-            }
-        }
-
-        impl DoubleEndedIterator for IndexRange<$ty> {
-            #[inline]
-            fn next_back(&mut self) -> Option<$ty> {
-                if self.0.start < self.0.end {
-                    let new = self.0.end - 1;
-                    self.0.end = new;
-                    Some(new)
-                } else {
-                    None
-                }
-            }
-        }
         impl AddAssign<$ty> for $ty {
             #[inline]
             fn add_assign(&mut self, rhs: $ty) {

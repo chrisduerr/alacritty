@@ -7,7 +7,7 @@ use std::ops::{Bound, Deref, Index, IndexMut, Range, RangeBounds, RangeInclusive
 use serde::{Deserialize, Serialize};
 
 use crate::ansi::{CharsetIndex, StandardCharset};
-use crate::index::{Column, IndexRange, Line, Point};
+use crate::index::{Column, Line, Point};
 use crate::term::cell::{Flags, ResetDiscriminant};
 
 pub mod resize;
@@ -188,18 +188,15 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
     }
 
     #[inline]
-    pub fn scroll_down<D>(&mut self, region: &Range<Line>, positions: Line)
+    pub fn scroll_down<D>(&mut self, region: &Range<usize>, positions: usize)
     where
         T: ResetDiscriminant<D>,
         D: PartialEq,
     {
-        let screen_lines = self.screen_lines().0;
-
         // When rotating the entire region, just reset everything.
         if positions >= region.end - region.start {
-            for i in region.start.0..region.end.0 {
-                let index = screen_lines - i - 1;
-                self.raw[index].reset(&self.cursor.template);
+            for i in region.start..region.end {
+                self.raw[i].reset(&self.cursor.template);
             }
 
             return;
@@ -218,32 +215,31 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
             //
             // We need to start from the top, to make sure the fixed lines aren't swapped with each
             // other.
-            let fixed_lines = screen_lines - region.end.0;
-            for i in (0..fixed_lines).rev() {
-                self.raw.swap(i, i + positions.0);
+            for i in (0..region.start).rev() {
+                self.raw.swap(i, i + positions);
             }
 
             // Rotate the entire line buffer downward.
-            self.raw.rotate_down(*positions);
+            self.raw.rotate_down(positions);
 
             // Ensure all new lines are fully cleared.
-            for i in 0..positions.0 {
+            let screen_lines = self.screen_lines().0;
+            for i in 0..positions {
                 let index = screen_lines - i - 1;
                 self.raw[index].reset(&self.cursor.template);
             }
 
             // Swap the fixed lines at the top back into position.
-            for i in 0..region.start.0 {
-                let index = screen_lines - i - 1;
-                self.raw.swap(index, index - positions.0);
+            for i in region.end..screen_lines {
+                self.raw.swap(i, i - positions);
             }
         } else {
             // Subregion rotation.
-            for line in IndexRange((region.start + positions)..region.end).rev() {
-                self.raw.swap_lines(line, line - positions);
+            for line in (region.start + positions)..region.end {
+                self.raw.swap(line, line - positions);
             }
 
-            for line in IndexRange(region.start..(region.start + positions)) {
+            for line in (region.end - positions)..region.end {
                 self.raw[line].reset(&self.cursor.template);
             }
         }
@@ -252,7 +248,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
     /// Move lines at the bottom toward the top.
     ///
     /// This is the performance-sensitive part of scrolling.
-    pub fn scroll_up<D>(&mut self, region: &Range<Line>, positions: Line)
+    pub fn scroll_up<D>(&mut self, region: &Range<usize>, positions: usize)
     where
         T: ResetDiscriminant<D>,
         D: PartialEq,
@@ -260,10 +256,9 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         let screen_lines = self.screen_lines().0;
 
         // When rotating the entire region with fixed lines at the top, just reset everything.
-        if positions >= region.end - region.start && region.start != Line(0) {
-            for i in region.start.0..region.end.0 {
-                let index = screen_lines - i - 1;
-                self.raw[index].reset(&self.cursor.template);
+        if positions >= region.end - region.start && region.end != screen_lines {
+            for i in region.start..region.end {
+                self.raw[i].reset(&self.cursor.template);
             }
 
             return;
@@ -271,11 +266,11 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
 
         // Update display offset when not pinned to active area.
         if self.display_offset != 0 {
-            self.display_offset = min(self.display_offset + *positions, self.max_scroll_limit);
+            self.display_offset = min(self.display_offset + positions, self.max_scroll_limit);
         }
 
         // Create scrollback for the new lines.
-        self.increase_scroll_limit(*positions);
+        self.increase_scroll_limit(positions);
 
         // Swap the lines fixed at the top to their target positions after rotation.
         //
@@ -285,23 +280,21 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         //
         // We need to start from the bottom, to make sure the fixed lines aren't swapped with each
         // other.
-        for i in (0..region.start.0).rev() {
-            let index = screen_lines - i - 1;
-            self.raw.swap(index, index - positions.0);
+        for i in region.end..screen_lines {
+            self.raw.swap(i, i - positions);
         }
 
         // Rotate the entire line buffer upward.
-        self.raw.rotate(-(positions.0 as isize));
+        self.raw.rotate(-(positions as isize));
 
         // Ensure all new lines are fully cleared.
-        for i in 0..positions.0 {
+        for i in 0..positions {
             self.raw[i].reset(&self.cursor.template);
         }
 
         // Swap the fixed lines at the bottom back into position.
-        let fixed_lines = screen_lines - region.end.0;
-        for i in 0..fixed_lines {
-            self.raw.swap(i, i + positions.0);
+        for i in 0..region.start {
+            self.raw.swap(i, i + positions);
         }
     }
 
@@ -319,17 +312,17 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
             }
         }
         debug_assert!(iter.point.line <= *self.lines);
-        let positions = self.lines - iter.point.line;
-        let region = Line(0)..self.screen_lines();
+
+        let positions = self.lines.0 - iter.point.line;
 
         // Reset display offset.
         self.display_offset = 0;
 
         // Clear the viewport.
-        self.scroll_up(&region, positions);
+        self.scroll_up(&(0..self.lines.0), positions);
 
         // Reset rotated lines.
-        for i in positions.0..self.lines.0 {
+        for i in positions..self.lines.0 {
             self.raw[i].reset(&self.cursor.template);
         }
     }

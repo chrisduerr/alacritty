@@ -45,27 +45,27 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         T: ResetDiscriminant<D>,
         D: PartialEq,
     {
-        let lines_added = new_line_count - self.lines;
+        let lines_added = (new_line_count - self.lines).0;
 
         // Need to resize before updating buffer.
         self.raw.grow_visible_lines(new_line_count);
         self.lines = new_line_count;
 
         let history_size = self.history_size();
-        let from_history = min(history_size, lines_added.0);
+        let from_history = min(history_size, lines_added);
 
         // Move existing lines up for every line that couldn't be pulled from history.
-        if from_history != lines_added.0 {
+        if from_history != lines_added {
             let delta = lines_added - from_history;
-            self.scroll_up(&(Line(0)..new_line_count), delta);
+            self.scroll_up(&(0..new_line_count.0), delta);
         }
 
         // Move cursor down for every line pulled from history.
         self.saved_cursor.point.line += from_history;
         self.cursor.point.line += from_history;
 
-        self.display_offset = self.display_offset.saturating_sub(*lines_added);
-        self.decrease_scroll_limit(*lines_added);
+        self.display_offset = self.display_offset.saturating_sub(lines_added);
+        self.decrease_scroll_limit(lines_added);
     }
 
     /// Remove lines from the visible area.
@@ -83,7 +83,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         // Scroll up to keep content inside the window.
         let required_scrolling = (self.cursor.point.line + 1).saturating_sub(target.0);
         if required_scrolling > 0 {
-            self.scroll_up(&(Line(0)..self.lines), Line(required_scrolling));
+            self.scroll_up(&(0..self.lines.0), required_scrolling);
 
             // Clamp cursors to the new viewport size.
             self.cursor.point.line = min(self.cursor.point.line, target - 1);
