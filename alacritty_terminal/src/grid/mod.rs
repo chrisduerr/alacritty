@@ -1,7 +1,7 @@
 //! A specialized 2D grid implementation optimized for use in a terminal.
 
 use std::cmp::{max, min};
-use std::iter::{Map, TakeWhile};
+use std::iter::TakeWhile;
 use std::ops::{Bound, Deref, Index, IndexMut, Range, RangeBounds, RangeInclusive};
 
 use serde::{Deserialize, Serialize};
@@ -460,16 +460,7 @@ impl<T> Grid<T> {
 
         let iter = GridIterator { grid: self, point: start };
 
-        let display_offset = self.display_offset;
-        let lines = self.lines.0;
-
-        let take_while: DisplayIterTakeFun<'_, T> =
-            Box::new(move |indexed: &Indexed<&T>| indexed.point <= end);
-        let map: DisplayIterMapFun<'_, T> = Box::new(move |indexed: Indexed<&T>| {
-            let line = Line(lines + display_offset - indexed.point.line - 1);
-            Indexed { point: Point::new(line, indexed.point.column), cell: indexed.cell }
-        });
-        iter.take_while(take_while).map(map)
+        iter.take_while(Box::new(move |indexed: &Indexed<&T>| indexed.point <= end))
     }
 
     #[inline]
@@ -609,12 +600,12 @@ impl Dimensions for (Line, Column) {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Indexed<T, L = usize> {
-    pub point: Point<L>,
+pub struct Indexed<T> {
+    pub point: Point<usize>,
     pub cell: T,
 }
 
-impl<T, L> Deref for Indexed<T, L> {
+impl<T> Deref for Indexed<T> {
     type Target = T;
 
     #[inline]
@@ -686,7 +677,4 @@ impl<'a, T> BidirectionalIterator for GridIterator<'a, T> {
     }
 }
 
-pub type DisplayIter<'a, T> =
-    Map<TakeWhile<GridIterator<'a, T>, DisplayIterTakeFun<'a, T>>, DisplayIterMapFun<'a, T>>;
-type DisplayIterTakeFun<'a, T> = Box<dyn Fn(&Indexed<&'a T>) -> bool>;
-type DisplayIterMapFun<'a, T> = Box<dyn FnMut(Indexed<&'a T>) -> Indexed<&'a T, Line>>;
+pub type DisplayIter<'a, T> = TakeWhile<GridIterator<'a, T>, Box<dyn Fn(&Indexed<&'a T>) -> bool>>;

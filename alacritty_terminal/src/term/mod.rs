@@ -547,28 +547,6 @@ impl<T> Term<T> {
         self.selection = None;
     }
 
-    /// Get the selection within the viewport.
-    fn visible_selection(&self) -> Option<SelectionRange<Line>> {
-        let selection = self.selection.as_ref()?.to_range(self)?;
-
-        // Set horizontal limits for block selection.
-        let (limit_start, limit_end) = if selection.is_block {
-            (selection.start.column, selection.end.column)
-        } else {
-            (Column(0), self.cols() - 1)
-        };
-
-        let range = self.grid.clamp_buffer_range_to_visible(&(selection.start..=selection.end))?;
-        let mut start = *range.start();
-        let mut end = *range.end();
-
-        // Trim start/end with partially visible block selection.
-        start.column = max(limit_start, start.column);
-        end.column = min(limit_end, end.column);
-
-        Some(SelectionRange::new(start, end, selection.is_block))
-    }
-
     /// Scroll screen down.
     ///
     /// Text moves down; clear at bottom
@@ -1822,14 +1800,14 @@ impl IndexMut<Column> for TabStops {
 #[derive(Copy, Clone)]
 pub struct RenderableCursor {
     pub shape: CursorShape,
-    pub point: Point,
+    pub point: Point<usize>,
 }
 
 impl RenderableCursor {
     fn new<T>(term: &Term<T>) -> Self {
         // Cursor position.
         let vi_mode = term.mode().contains(TermMode::VI);
-        let mut point = if vi_mode {
+        let point = if vi_mode {
             term.vi_mode_cursor.point
         } else {
             let mut point = term.grid.cursor.point;
@@ -1838,16 +1816,15 @@ impl RenderableCursor {
         };
 
         // Cursor shape.
-        let shape = if !vi_mode
-            && (!term.mode().contains(TermMode::SHOW_CURSOR) || point.line >= term.screen_lines())
-        {
-            point.line = Line(0);
-            CursorShape::Hidden
-        } else {
+        let shape = if vi_mode || term.mode().contains(TermMode::SHOW_CURSOR) {
             term.cursor_style().shape
+        } else {
+            CursorShape::Hidden
         };
 
-        Self { shape, point }
+        let absolute = term.visible_to_buffer(point);
+
+        Self { shape, point: absolute }
     }
 }
 
@@ -1856,7 +1833,7 @@ impl RenderableCursor {
 /// This contains all content required to render the current terminal view.
 pub struct RenderableContent<'a> {
     pub display_iter: DisplayIter<'a, Cell>,
-    pub selection: Option<SelectionRange<Line>>,
+    pub selection: Option<SelectionRange>,
     pub cursor: RenderableCursor,
     pub display_offset: usize,
     pub colors: &'a color::Colors,
@@ -1869,7 +1846,7 @@ impl<'a> RenderableContent<'a> {
             display_iter: term.grid().display_iter(),
             display_offset: term.grid().display_offset(),
             cursor: RenderableCursor::new(term),
-            selection: term.visible_selection(),
+            selection: term.selection.as_ref().and_then(|s| s.to_range(term)),
             colors: &term.colors,
             mode: *term.mode(),
         }

@@ -37,6 +37,7 @@ pub struct RenderableContent<'a> {
     hint: Hint<'a>,
     config: &'a Config<UiConfig>,
     colors: &'a List,
+    screen_lines: Line,
 }
 
 impl<'a> RenderableContent<'a> {
@@ -63,8 +64,19 @@ impl<'a> RenderableContent<'a> {
         display.hint_state.update_matches(term);
         let hint = Hint::from(&display.hint_state);
 
+        let screen_lines = term.screen_lines();
         let colors = &display.colors;
-        Self { cursor: None, terminal_content, terminal_cursor, search, config, colors, hint }
+
+        Self {
+            cursor: None,
+            terminal_content,
+            terminal_cursor,
+            screen_lines,
+            search,
+            config,
+            colors,
+            hint,
+        }
     }
 
     /// Viewport offset.
@@ -125,7 +137,7 @@ impl<'a> RenderableContent<'a> {
         let cursor_color = cursor_color.color(cell.fg, cell.bg);
 
         Some(RenderableCursor {
-            point: self.terminal_cursor.point,
+            point: Point::new(cell.point.line, self.terminal_cursor.point.column),
             shape: self.terminal_cursor.shape,
             cursor_color,
             text_color,
@@ -145,9 +157,10 @@ impl<'a> Iterator for RenderableContent<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let cell = self.terminal_content.display_iter.next()?;
+            let absolute_point = cell.point;
             let mut cell = RenderableCell::new(self, cell);
 
-            if self.terminal_cursor.point == cell.point {
+            if self.terminal_cursor.point == absolute_point {
                 // Store the cursor which should be rendered.
                 self.cursor = self.renderable_cursor(&cell).map(|cursor| {
                     if cursor.shape == CursorShape::Block {
@@ -185,7 +198,7 @@ pub struct RenderableCell {
 }
 
 impl RenderableCell {
-    fn new<'a>(content: &mut RenderableContent<'a>, cell: Indexed<&Cell, Line>) -> Self {
+    fn new<'a>(content: &mut RenderableContent<'a>, cell: Indexed<&Cell>) -> Self {
         // Lookup RGB values.
         let mut fg_rgb = Self::compute_fg_rgb(content, cell.fg, cell.flags);
         let mut bg_rgb = Self::compute_bg_rgb(content, cell.bg);
@@ -235,10 +248,15 @@ impl RenderableCell {
             is_match = true;
         }
 
+        // Convert the absolute point to viewport coordinates.
+        let display_offset = content.terminal_content.display_offset;
+        let line = content.screen_lines + display_offset - cell.point.line - 1;
+        let point = Point::new(line, cell.point.column);
+
         RenderableCell {
             character,
             zerowidth: cell.zerowidth().map(|zerowidth| zerowidth.to_vec()),
-            point: cell.point,
+            point,
             fg: fg_rgb,
             bg: bg_rgb,
             bg_alpha,
@@ -384,7 +402,7 @@ impl<'a> Hint<'a> {
     /// this position will be returned.
     ///
     /// The tuple's [`bool`] will be `true` when the character is the first for this hint.
-    fn advance(&mut self, point: Point) -> Option<(char, bool)> {
+    fn advance(&mut self, point: Point<usize>) -> Option<(char, bool)> {
         // Check if we're within a match at all.
         if !self.regex.advance(point) {
             return None;
@@ -416,7 +434,7 @@ impl<'a> From<&'a HintState> for Hint<'a> {
 
 /// Wrapper for finding visible regex matches.
 #[derive(Default, Clone)]
-pub struct RegexMatches(Vec<RangeInclusive<Point>>);
+pub struct RegexMatches(Vec<RangeInclusive<Point<usize>>>);
 
 impl RegexMatches {
     /// Find all visible matches.
@@ -445,19 +463,14 @@ impl RegexMatches {
         // Create an iterater for the current regex search for all visible matches.
         let iter = RegexIter::new(start, end, Direction::Right, term, dfas)
             .skip_while(move |rm| rm.end().line > viewport_start)
-            .take_while(move |rm| rm.start().line >= viewport_end)
-            .map(|rm| {
-                let viewport_start = term.grid().clamp_buffer_to_visible(*rm.start());
-                let viewport_end = term.grid().clamp_buffer_to_visible(*rm.end());
-                viewport_start..=viewport_end
-            });
+            .take_while(move |rm| rm.start().line >= viewport_end);
 
         Self(iter.collect())
     }
 }
 
 impl Deref for RegexMatches {
-    type Target = Vec<RangeInclusive<Point>>;
+    type Target = Vec<RangeInclusive<Point<usize>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -490,7 +503,7 @@ impl<'a> Regex<'a> {
     /// Advance the regex tracker to the next point.
     ///
     /// This will return `true` if the point passed is part of a regex match.
-    fn advance(&mut self, point: Point) -> bool {
+    fn advance(&mut self, point: Point<usize>) -> bool {
         while let Some(regex_match) = self.matches.get(self.index) {
             if regex_match.start() > &point {
                 break;

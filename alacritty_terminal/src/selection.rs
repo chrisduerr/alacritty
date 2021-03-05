@@ -45,18 +45,18 @@ impl<L> SelectionRange<L> {
     }
 }
 
-impl SelectionRange<Line> {
+impl SelectionRange<usize> {
     /// Check if a point lies within the selection.
-    pub fn contains(&self, point: Point) -> bool {
-        self.start.line <= point.line
-            && self.end.line >= point.line
+    pub fn contains(&self, point: Point<usize>) -> bool {
+        self.start.line >= point.line
+            && self.end.line <= point.line
             && (self.start.column <= point.column
                 || (self.start.line != point.line && !self.is_block))
             && (self.end.column >= point.column || (self.end.line != point.line && !self.is_block))
     }
 
     /// Check if the cell at a point is part of the selection.
-    pub fn contains_cell(&self, indexed: &Indexed<&Cell, Line>, cursor: RenderableCursor) -> bool {
+    pub fn contains_cell(&self, indexed: &Indexed<&Cell>, cursor: RenderableCursor) -> bool {
         // Do not invert block cursor at selection boundaries.
         if cursor.shape == CursorShape::Block
             && cursor.point == indexed.point
