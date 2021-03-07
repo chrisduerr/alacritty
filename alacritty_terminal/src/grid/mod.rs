@@ -30,10 +30,10 @@ pub trait GridCell: Sized {
     fn flags_mut(&mut self) -> &mut Flags;
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Cursor<T> {
     /// The location of this cursor.
-    pub point: Point,
+    pub point: Point<usize>,
 
     /// Template cell when using this cursor.
     pub template: T,
@@ -50,6 +50,17 @@ pub struct Cursor<T> {
     /// the number of columns, which would lead to index out of bounds when interacting with arrays
     /// without sanitization.
     pub input_needs_wrap: bool,
+}
+
+impl<T: Default> Cursor<T> {
+    fn new(lines: Line) -> Self {
+        Self {
+            point: Point::new(lines.0 - 1, Column(0)),
+            input_needs_wrap: Default::default(),
+            template: Default::default(),
+            charsets: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
@@ -142,8 +153,8 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
             raw: Storage::with_capacity(lines, cols),
             max_scroll_limit,
             display_offset: 0,
-            saved_cursor: Cursor::default(),
-            cursor: Cursor::default(),
+            saved_cursor: Cursor::new(lines),
+            cursor: Cursor::new(lines),
             lines,
             cols,
         }
@@ -335,8 +346,8 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
     {
         self.clear_history();
 
-        self.saved_cursor = Cursor::default();
-        self.cursor = Cursor::default();
+        self.saved_cursor = Cursor::new(self.lines);
+        self.cursor = Cursor::new(self.lines);
         self.display_offset = 0;
 
         // Reset all visible lines.

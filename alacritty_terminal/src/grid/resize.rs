@@ -61,8 +61,8 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         }
 
         // Move cursor down for every line pulled from history.
-        self.saved_cursor.point.line += from_history;
-        self.cursor.point.line += from_history;
+        self.saved_cursor.point.line -= from_history;
+        self.cursor.point.line -= from_history;
 
         self.display_offset = self.display_offset.saturating_sub(lines_added);
         self.decrease_scroll_limit(lines_added);
@@ -81,16 +81,16 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         D: PartialEq,
     {
         // Scroll up to keep content inside the window.
-        let required_scrolling = (self.cursor.point.line + 1).saturating_sub(target.0);
+        let required_scrolling = (self.lines.0 - self.cursor.point.line).saturating_sub(target.0);
         if required_scrolling > 0 {
             self.scroll_up(&(0..self.lines.0), required_scrolling);
 
             // Clamp cursors to the new viewport size.
-            self.cursor.point.line = min(self.cursor.point.line, target - 1);
+            self.cursor.point.line = min(self.cursor.point.line, target.0 - 1);
         }
 
         // Clamp saved cursor, since only primary cursor is scrolled into viewport.
-        self.saved_cursor.point.line = min(self.saved_cursor.point.line, target - 1);
+        self.saved_cursor.point.line = min(self.saved_cursor.point.line, target.0 - 1);
 
         self.raw.rotate((self.lines - target).0 as isize);
         self.raw.shrink_visible_lines(target);
@@ -108,7 +108,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         self.cols = cols;
 
         let mut reversed: Vec<Row<T>> = Vec::with_capacity(self.raw.len());
-        let mut cursor_line_delta = 0;
+        let mut cursor_line_delta: usize = 0;
 
         // Remove the linewrap special case, by moving the cursor outside of the grid.
         if self.cursor.input_needs_wrap && reflow {
@@ -164,9 +164,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
             // Add removed cells to previous row and reflow content.
             last_row.append(&mut cells);
 
-            let cursor_buffer_line = (self.lines - self.cursor.point.line - 1).0;
-
-            if i == cursor_buffer_line && reflow {
+            if i == self.cursor.point.line && reflow {
                 // Resize cursor's line and reflow the cursor if necessary.
                 let mut target = self.cursor.point.sub(cols, num_wrapped);
 
@@ -179,7 +177,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
 
                 // Get required cursor line changes. Since `num_wrapped` is smaller than `cols`
                 // this will always be either `0` or `1`.
-                let line_delta = (self.cursor.point.line - target.line).0;
+                let line_delta = self.lines.0 - self.cursor.point.line - 1 - target.line;
 
                 if line_delta != 0 && row.is_clear() {
                     continue;
@@ -193,8 +191,8 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
                 }
 
                 // Rotate cursor down if content below them was pulled from history.
-                if i < cursor_buffer_line {
-                    self.cursor.point.line += 1;
+                if i < self.cursor.point.line {
+                    self.cursor.point.line -= 1;
                 }
 
                 // Don't push line into the new buffer.
@@ -212,18 +210,17 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         // Make sure we have at least the viewport filled.
         if reversed.len() < self.lines.0 {
             let delta = self.lines.0 - reversed.len();
-            self.cursor.point.line.0 = self.cursor.point.line.saturating_sub(delta);
+            self.cursor.point.line = min(self.cursor.point.line + delta, self.lines.0 - 1);
             reversed.resize_with(self.lines.0, || Row::new(cols));
         }
 
         // Pull content down to put cursor in correct position, or move cursor up if there's no
         // more lines to delete below the cursor.
         if cursor_line_delta != 0 {
-            let cursor_buffer_line = (self.lines - self.cursor.point.line - 1).0;
-            let available = min(cursor_buffer_line, reversed.len() - self.lines.0);
+            let available = min(self.cursor.point.line, reversed.len() - self.lines.0);
             let overflow = cursor_line_delta.saturating_sub(available);
             reversed.truncate(reversed.len() + overflow - cursor_line_delta);
-            self.cursor.point.line.0 = self.cursor.point.line.saturating_sub(overflow);
+            self.cursor.point.line = min(self.cursor.point.line + overflow, self.lines.0 - 1);
         }
 
         // Reverse iterator and fill all rows that are still too short.
@@ -260,8 +257,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
             if let Some(buffered) = buffered.take() {
                 // Add a column for every cell added before the cursor, if it goes beyond the new
                 // width it is then later reflown.
-                let cursor_buffer_line = (self.lines - self.cursor.point.line - 1).0;
-                if i == cursor_buffer_line {
+                if i == self.cursor.point.line {
                     self.cursor.point.column += buffered.len();
                 }
 
@@ -273,8 +269,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
                 let mut wrapped = match row.shrink(cols) {
                     Some(wrapped) if reflow => wrapped,
                     _ => {
-                        let cursor_buffer_line = (self.lines - self.cursor.point.line - 1).0;
-                        if reflow && i == cursor_buffer_line && self.cursor.point.column > cols {
+                        if reflow && i == self.cursor.point.line && self.cursor.point.column > cols {
                             // If there are empty cells before the cursor, we assume it is explicit
                             // whitespace and need to wrap it like normal content.
                             Vec::new()
@@ -332,15 +327,14 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
                     break;
                 } else {
                     // Reflow cursor if a line below it is deleted.
-                    let cursor_buffer_line = (self.lines - self.cursor.point.line - 1).0;
-                    if (i == cursor_buffer_line && self.cursor.point.column < cols)
-                        || i < cursor_buffer_line
+                    if (i == self.cursor.point.line && self.cursor.point.column < cols)
+                        || i < self.cursor.point.line
                     {
-                        self.cursor.point.line.0 = self.cursor.point.line.saturating_sub(1);
+                        self.cursor.point.line = min(self.cursor.point.line + 1, self.lines.0 - 1);
                     }
 
                     // Reflow the cursor if it is on this line beyond the width.
-                    if i == cursor_buffer_line && self.cursor.point.column >= cols {
+                    if i == self.cursor.point.line && self.cursor.point.column >= cols {
                         // Since only a single new line is created, we subtract only `cols`
                         // from the cursor instead of reflowing it completely.
                         self.cursor.point.column -= cols;

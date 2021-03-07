@@ -506,8 +506,8 @@ impl<T> Term<T> {
             let delta = if num_lines > old_lines {
                 (num_lines - old_lines.0).saturating_sub(self.history_size()) as isize
             } else {
-                let cursor_line = self.grid.cursor.point.line;
-                -(min(old_lines - cursor_line - 1, old_lines - num_lines).0 as isize)
+                // TODO: Test this
+                -(min(self.grid.cursor.point.line, (old_lines - num_lines).0) as isize)
             };
             self.selection = selection.rotate(self, &(0..num_lines.0), delta);
         }
@@ -619,9 +619,8 @@ impl<T> Term<T> {
 
         if self.mode.contains(TermMode::VI) {
             // Reset vi mode cursor position to match primary cursor.
-            let cursor = self.grid.cursor.point;
-            let line = min(cursor.line + self.grid.display_offset(), self.screen_lines() - 1);
-            self.vi_mode_cursor = ViModeCursor::new(Point::new(line, cursor.column));
+            let cursor = self.grid.clamp_buffer_to_visible(self.grid.cursor.point);
+            self.vi_mode_cursor = ViModeCursor::new(cursor);
         }
 
         // Update UI about cursor blinking state changes.
@@ -755,11 +754,10 @@ impl<T> Term<T> {
 
         self.grid.cursor_cell().flags.insert(Flags::WRAPLINE);
 
-        let region_start = self.screen_lines() - self.scroll_region.start - 1;
-        if self.grid.cursor.point.line >= region_start {
+        if self.grid.cursor.point.line <= self.scroll_region.start {
             self.linefeed();
         } else {
-            self.grid.cursor.point.line += 1;
+            self.grid.cursor.point.line -= 1;
         }
 
         self.grid.cursor.point.column = Column(0);
@@ -896,32 +894,30 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn goto(&mut self, line: Line, col: Column) {
-        trace!("Going to: line={}, col={}", line, col);
-
-        let region_start = self.screen_lines() - self.scroll_region.start - 1;
-        let region_end = self.screen_lines() - self.scroll_region.end;
-
-        let (y_offset, max_y) = if self.mode.contains(TermMode::ORIGIN) {
-            (region_end, region_start)
-        } else {
-            (Line(0), self.screen_lines() - 1)
-        };
-
-        self.grid.cursor.point.line = min(line + y_offset, max_y);
-        self.grid.cursor.point.column = min(col, self.cols() - 1);
-        self.grid.cursor.input_needs_wrap = false;
+        self.goto_line(line);
+        self.goto_col(col);
     }
 
     #[inline]
     fn goto_line(&mut self, line: Line) {
         trace!("Going to line: {}", line);
-        self.goto(line, self.grid.cursor.point.column)
+
+        let y_offset = if self.mode.contains(TermMode::ORIGIN) {
+            self.scroll_region.end - 1
+        } else {
+            self.screen_lines().0 - 1
+        };
+
+        self.grid.cursor.point.line = y_offset.saturating_sub(line.0);
+        self.grid.cursor.input_needs_wrap = false;
     }
 
     #[inline]
     fn goto_col(&mut self, col: Column) {
         trace!("Going to column: {}", col);
-        self.goto(self.grid.cursor.point.line, col)
+
+        self.grid.cursor.point.column = min(col, self.cols() - 1);
+        self.grid.cursor.input_needs_wrap = false;
     }
 
     #[inline]
@@ -953,15 +949,18 @@ impl<T: EventListener> Handler for Term<T> {
     #[inline]
     fn move_up(&mut self, lines: Line) {
         trace!("Moving up: {}", lines);
-        let move_to = Line(self.grid.cursor.point.line.0.saturating_sub(lines.0));
-        self.goto(move_to, self.grid.cursor.point.column)
+
+        let absolute = self.grid.cursor.point.line + lines.0;
+        let line = self.screen_lines() - absolute - 1;
+        self.goto_line(line);
     }
 
     #[inline]
     fn move_down(&mut self, lines: Line) {
         trace!("Moving down: {}", lines);
-        let move_to = self.grid.cursor.point.line + lines;
-        self.goto(move_to, self.grid.cursor.point.column)
+        let absolute = self.grid.cursor.point.line.saturating_sub(lines.0);
+        let line = self.screen_lines() - absolute - 1;
+        self.goto_line(line);
     }
 
     #[inline]
@@ -1004,8 +1003,8 @@ impl<T: EventListener> Handler for Term<T> {
                 let _ = writer.write_all(b"\x1b[0n");
             },
             6 => {
-                let pos = self.grid.cursor.point;
-                let response = format!("\x1b[{};{}R", pos.line + 1, pos.column + 1);
+                let line = self.screen_lines() - self.grid.cursor.point.line;
+                let response = format!("\x1b[{};{}R", line, self.grid.cursor.point.column + 1);
                 let _ = writer.write_all(response.as_bytes());
             },
             _ => debug!("unknown device status query: {}", arg),
@@ -1015,15 +1014,15 @@ impl<T: EventListener> Handler for Term<T> {
     #[inline]
     fn move_down_and_cr(&mut self, lines: Line) {
         trace!("Moving down and cr: {}", lines);
-        let move_to = self.grid.cursor.point.line + lines;
-        self.goto(move_to, Column(0))
+        self.grid.cursor.point.column = Column(0);
+        self.move_down(lines);
     }
 
     #[inline]
     fn move_up_and_cr(&mut self, lines: Line) {
         trace!("Moving up and cr: {}", lines);
-        let move_to = Line(self.grid.cursor.point.line.0.saturating_sub(lines.0));
-        self.goto(move_to, Column(0))
+        self.grid.cursor.point.column = Column(0);
+        self.move_up(lines);
     }
 
     /// Insert tab at cursor position.
@@ -1082,14 +1081,10 @@ impl<T: EventListener> Handler for Term<T> {
     fn linefeed(&mut self) {
         trace!("Linefeed");
 
-        // Convert to viewport indexing.
-        let region_start = self.screen_lines() - self.scroll_region.start;
-
-        let next = self.grid.cursor.point.line + 1;
-        if next == region_start {
+        if self.grid.cursor.point.line == self.scroll_region.start {
             self.scroll_up(Line(1));
-        } else if next < self.screen_lines() {
-            self.grid.cursor.point.line += 1;
+        } else if self.grid.cursor.point.line > 0 {
+            self.grid.cursor.point.line -= 1;
         }
     }
 
@@ -1156,7 +1151,7 @@ impl<T: EventListener> Handler for Term<T> {
     fn insert_blank_lines(&mut self, lines: Line) {
         trace!("Inserting blank {} lines", lines);
 
-        let origin = self.visible_to_buffer(self.grid.cursor.point).line;
+        let origin = self.grid.cursor.point.line;
         if self.scroll_region.contains(&origin) {
             self.scroll_down_relative(origin, lines);
         }
@@ -1165,11 +1160,10 @@ impl<T: EventListener> Handler for Term<T> {
     #[inline]
     fn delete_lines(&mut self, lines: Line) {
         let origin = self.grid.cursor.point.line;
-        let lines = min(self.screen_lines() - origin, lines);
+        let lines = min(Line(origin + 1), lines);
 
         trace!("Deleting {} lines", lines);
 
-        let origin = self.visible_to_buffer(self.grid.cursor.point).line;
         if lines.0 > 0 && self.scroll_region.contains(&origin) {
             self.scroll_up_relative(origin, lines);
         }
@@ -1284,11 +1278,11 @@ impl<T: EventListener> Handler for Term<T> {
             },
         }
 
-        let cursor_buffer_line = (self.screen_lines() - self.grid.cursor.point.line - 1).0;
+        let cursor_line = self.grid.cursor.point.line;
         self.selection = self
             .selection
             .take()
-            .filter(|s| !s.intersects_range(cursor_buffer_line..=cursor_buffer_line));
+            .filter(|s| !s.intersects_range(cursor_line..=cursor_line));
     }
 
     /// Set the indexed color value.
@@ -1363,17 +1357,17 @@ impl<T: EventListener> Handler for Term<T> {
         trace!("Clearing screen: {:?}", mode);
         let bg = self.grid.cursor.template.bg;
 
-        let num_lines = self.screen_lines().0;
-        let cursor_buffer_line = num_lines - self.grid.cursor.point.line.0 - 1;
+        let screen_lines = self.screen_lines().0;
 
         match mode {
             ansi::ClearMode::Above => {
                 let cursor = self.grid.cursor.point;
 
                 // If clearing more than one line.
-                if cursor.line > Line(1) {
+                if cursor.line + 2 < screen_lines {
                     // Fully clear all lines before the current line.
-                    self.grid.reset_region(..cursor.line);
+                    let viewport_line = Line(screen_lines - cursor.line - 1);
+                    self.grid.reset_region(..viewport_line); // TODO: Convert
                 }
 
                 // Clear up to the current column in the current line.
@@ -1385,7 +1379,7 @@ impl<T: EventListener> Handler for Term<T> {
                 self.selection = self
                     .selection
                     .take()
-                    .filter(|s| !s.intersects_range(cursor_buffer_line..num_lines));
+                    .filter(|s| !s.intersects_range(self.grid.cursor.point.line..screen_lines));
             },
             ansi::ClearMode::Below => {
                 let cursor = self.grid.cursor.point;
@@ -1393,12 +1387,13 @@ impl<T: EventListener> Handler for Term<T> {
                     *cell = bg.into();
                 }
 
-                if cursor.line.0 < num_lines - 1 {
-                    self.grid.reset_region((cursor.line + 1)..);
+                if cursor.line > 0 {
+                    let viewport_line = Line(screen_lines - cursor.line - 1);
+                    self.grid.reset_region((viewport_line + 1)..); // TODO: Convert
                 }
 
                 self.selection =
-                    self.selection.take().filter(|s| !s.intersects_range(..=cursor_buffer_line));
+                    self.selection.take().filter(|s| !s.intersects_range(..=cursor.line));
             },
             ansi::ClearMode::All => {
                 if self.mode.contains(TermMode::ALT_SCREEN) {
@@ -1407,12 +1402,12 @@ impl<T: EventListener> Handler for Term<T> {
                     self.grid.clear_viewport();
                 }
 
-                self.selection = self.selection.take().filter(|s| !s.intersects_range(..num_lines));
+                self.selection = self.selection.take().filter(|s| !s.intersects_range(..screen_lines));
             },
             ansi::ClearMode::Saved if self.history_size() > 0 => {
                 self.grid.clear_history();
 
-                self.selection = self.selection.take().filter(|s| !s.intersects_range(num_lines..));
+                self.selection = self.selection.take().filter(|s| !s.intersects_range(screen_lines..));
             },
             // We have no history to clear.
             ansi::ClearMode::Saved => (),
@@ -1461,11 +1456,10 @@ impl<T: EventListener> Handler for Term<T> {
         trace!("Reversing index");
 
         // If cursor is at the top.
-        let region_end = self.screen_lines() - self.scroll_region.end;
-        if self.grid.cursor.point.line == region_end {
+        if self.grid.cursor.point.line + 1 == self.scroll_region.end {
             self.scroll_down(Line(1));
         } else {
-            self.grid.cursor.point.line = Line(self.grid.cursor.point.line.saturating_sub(1));
+            self.grid.cursor.point.line += 1;
         }
     }
 
@@ -1805,11 +1799,9 @@ impl RenderableCursor {
         // Cursor position.
         let vi_mode = term.mode().contains(TermMode::VI);
         let point = if vi_mode {
-            term.vi_mode_cursor.point
+            term.visible_to_buffer(term.vi_mode_cursor.point)
         } else {
-            let mut point = term.grid.cursor.point;
-            point.line += term.grid.display_offset();
-            point
+            term.grid.cursor.point
         };
 
         // Cursor shape.
@@ -1819,9 +1811,7 @@ impl RenderableCursor {
             CursorShape::Hidden
         };
 
-        let absolute = term.visible_to_buffer(point);
-
-        Self { shape, point: absolute }
+        Self { shape, point }
     }
 }
 
@@ -2075,14 +2065,14 @@ mod tests {
             term.newline();
         }
         assert_eq!(term.history_size(), 10);
-        assert_eq!(term.grid.cursor.point, Point::new(Line(9), Column(0)));
+        assert_eq!(term.grid.cursor.point, Point::new(0, Column(0)));
 
         // Increase visible lines.
         size.screen_lines.0 = 30;
         term.resize(size);
 
         assert_eq!(term.history_size(), 0);
-        assert_eq!(term.grid.cursor.point, Point::new(Line(19), Column(0)));
+        assert_eq!(term.grid.cursor.point, Point::new(10, Column(0)));
     }
 
     #[test]
@@ -2095,7 +2085,7 @@ mod tests {
             term.newline();
         }
         assert_eq!(term.history_size(), 10);
-        assert_eq!(term.grid.cursor.point, Point::new(Line(9), Column(0)));
+        assert_eq!(term.grid.cursor.point, Point::new(0, Column(0)));
 
         // Enter alt screen.
         term.set_mode(ansi::Mode::SwapScreenAndSetRestoreCursor);
@@ -2108,7 +2098,7 @@ mod tests {
         term.unset_mode(ansi::Mode::SwapScreenAndSetRestoreCursor);
 
         assert_eq!(term.history_size(), 0);
-        assert_eq!(term.grid.cursor.point, Point::new(Line(19), Column(0)));
+        assert_eq!(term.grid.cursor.point, Point::new(10, Column(0)));
     }
 
     #[test]
@@ -2121,14 +2111,14 @@ mod tests {
             term.newline();
         }
         assert_eq!(term.history_size(), 10);
-        assert_eq!(term.grid.cursor.point, Point::new(Line(9), Column(0)));
+        assert_eq!(term.grid.cursor.point, Point::new(0, Column(0)));
 
         // Increase visible lines.
         size.screen_lines.0 = 5;
         term.resize(size);
 
         assert_eq!(term.history_size(), 15);
-        assert_eq!(term.grid.cursor.point, Point::new(Line(4), Column(0)));
+        assert_eq!(term.grid.cursor.point, Point::new(0, Column(0)));
     }
 
     #[test]
@@ -2141,7 +2131,7 @@ mod tests {
             term.newline();
         }
         assert_eq!(term.history_size(), 10);
-        assert_eq!(term.grid.cursor.point, Point::new(Line(9), Column(0)));
+        assert_eq!(term.grid.cursor.point, Point::new(0, Column(0)));
 
         // Enter alt screen.
         term.set_mode(ansi::Mode::SwapScreenAndSetRestoreCursor);
@@ -2154,7 +2144,7 @@ mod tests {
         term.unset_mode(ansi::Mode::SwapScreenAndSetRestoreCursor);
 
         assert_eq!(term.history_size(), 15);
-        assert_eq!(term.grid.cursor.point, Point::new(Line(4), Column(0)));
+        assert_eq!(term.grid.cursor.point, Point::new(0, Column(0)));
     }
 
     #[test]

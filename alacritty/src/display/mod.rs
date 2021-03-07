@@ -495,6 +495,7 @@ impl Display {
         let cursor = content.cursor();
 
         let cursor_point = terminal.grid().cursor.point;
+        let cursor_point = terminal.grid().clamp_buffer_to_visible(cursor_point);
         let total_lines = terminal.grid().total_lines();
         let metrics = self.glyph_cache.font_metrics();
         let size_info = self.size_info;
