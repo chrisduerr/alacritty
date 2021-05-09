@@ -22,9 +22,6 @@ use crate::term::{SizeInfo, Term};
 use crate::thread;
 use crate::tty;
 
-/// Max bytes to read from the PTY.
-const MAX_READ: usize = u16::max_value() as usize;
-
 /// Messages that may be sent to the `EventLoop`.
 #[derive(Debug)]
 pub enum Msg {
@@ -208,57 +205,47 @@ where
         &mut self,
         state: &mut State,
         buf: &mut [u8],
-        mut writer: Option<&mut X>,
+        mut _writer: Option<&mut X>,
     ) -> io::Result<()>
     where
         X: Write,
     {
+        let mut all_processed = 0;
         let mut processed = 0;
-        let mut terminal = None;
 
+        let reserve = self.terminal.reserve(); // TODO: Test if worth.
+        let mut terminal;
         loop {
-            match self.pty.reader().read(buf) {
-                Ok(0) => break,
-                Ok(got) => {
-                    // Record bytes read; used to limit time spent in pty_read.
-                    processed += got;
-
-                    // Send a copy of bytes read to a subscriber. Used for
-                    // example with ref test recording.
-                    writer = writer.map(|w| {
-                        w.write_all(&buf[..got]).unwrap();
-                        w
-                    });
-
-                    // Get reference to terminal. Lock is acquired on initial
-                    // iteration and held until there's no bytes left to parse
-                    // or we've reached `MAX_READ`.
-                    if terminal.is_none() {
-                        terminal = Some(self.terminal.lock());
-                    }
-                    let terminal = terminal.as_mut().unwrap();
-
-                    // Run the parser.
-                    for byte in &buf[..got] {
-                        state.parser.advance(&mut **terminal, *byte);
-                    }
-
-                    // Exit if we've processed enough bytes.
-                    if processed > MAX_READ {
-                        break;
-                    }
-                },
+            let mut gogo = false;
+            // TODO: Handle max buffer size reached.
+            match self.pty.reader().read(&mut buf[processed..]) {
+                Ok(0) => gogo = true,
+                Ok(got) => processed += got,
                 Err(err) => match err.kind() {
                     ErrorKind::Interrupted | ErrorKind::WouldBlock => {
-                        break;
+                        gogo = true;
                     },
                     _ => return Err(err),
                 },
             }
+
+            // TODO: This seems to work, but actually fucks renderer.
+            terminal = self.terminal.try_lock();
+            if let Some(mut terminal) = terminal {
+                for byte in &buf[..processed] {
+                    state.parser.advance(&mut *terminal, *byte);
+                }
+
+                if gogo || all_processed >= 65535 {
+                    break;
+                }
+                all_processed += std::mem::replace(&mut processed, 0);
+            }
         }
+        drop(reserve);
 
         // Queue terminal redraw unless all processed bytes were synchronized.
-        if state.parser.sync_bytes_count() < processed && processed > 0 {
+        if state.parser.sync_bytes_count() < all_processed && all_processed > 0 {
             self.event_proxy.send_event(Event::Wakeup);
         }
 
@@ -300,7 +287,7 @@ where
     pub fn spawn(mut self) -> JoinHandle<(Self, State)> {
         thread::spawn_named("PTY reader", move || {
             let mut state = State::default();
-            let mut buf = [0u8; MAX_READ];
+            let mut buf = [0u8; 0x10_0000];
 
             let mut tokens = (0..).map(Into::into);
 

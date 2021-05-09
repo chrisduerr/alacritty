@@ -28,4 +28,12 @@ impl<T> FairMutex<T> {
         let _next = self.next.lock();
         self.data.lock()
     }
+
+    pub fn reserve(&self) -> MutexGuard<'_, ()> {
+        self.next.lock()
+    }
+
+    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+        self.data.try_lock()
+    }
 }
