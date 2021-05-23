@@ -1,0 +1,31 @@
+TINY FONT:
+    30 FPS:
+        Kitty:     0.00s user 1.34s system 16% cpu 8.150 total
+        Alacritty: 0.00s user 1.52s system 44% cpu 3.394 total
+        MINIMAL:   0.00s user 1.36s system 45% cpu 2.968 total
+
+    60 FPS:
+        Kitty:     0.00s user 1.32s system 32% cpu 4.110 total
+        Alacritty: 0.00s user 1.53s system 34% cpu 4.415 total
+        MINIMAL:   0.00s user 1.49s system 40% cpu 3.646 total
+
+    144 FPS:
+        Kitty:     0.00s user 1.30s system 38% cpu 3.382 total
+        Alacritty  0.00s user 1.52s system 14% cpu 10.467 total
+        MINIMAL:   0.00s user 1.42s system 30% cpu 4.707 total
+
+NORMAL FONT:
+    30 FPS:
+        Kitty:     0.00s user 1.34s system 16% cpu 8.146 total
+        Alacritty: 0.00s user 1.54s system 58% cpu 2.639 total
+        MINIMAL:   0.00s user 1.38s system 52% cpu 2.625 total
+
+    60 FPS:
+        Kitty:     0.00s user 1.33s system 31% cpu 4.171 total
+        Alacritty: 0.00s user 1.44s system 50% cpu 2.832 total
+        MINIMAL:   0.00s user 1.49s system 57% cpu 2.574 total
+
+    144 FPS:
+        Kitty:     0.00s user 1.31s system 38% cpu 3.363 total
+        Alacritty  0.00s user 1.48s system 51% cpu 2.893 total
+        MINIMAL:   0.00s user 1.41s system 48% cpu 2.932 total

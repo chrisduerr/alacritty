@@ -11,26 +11,19 @@ use parking_lot::{Mutex, MutexGuard};
 pub struct FairMutex<T> {
     /// Data.
     data: Mutex<T>,
-    /// Next-to-access.
-    next: Mutex<()>,
 }
 
 impl<T> FairMutex<T> {
     /// Create a new fair mutex.
     pub fn new(data: T) -> FairMutex<T> {
-        FairMutex { data: Mutex::new(data), next: Mutex::new(()) }
+        FairMutex { data: Mutex::new(data) }
     }
 
     /// Lock the mutex.
     pub fn lock(&self) -> MutexGuard<'_, T> {
         // Must bind to a temporary or the lock will be freed before going
         // into data.lock().
-        let _next = self.next.lock();
         self.data.lock()
-    }
-
-    pub fn reserve(&self) -> MutexGuard<'_, ()> {
-        self.next.lock()
     }
 
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {

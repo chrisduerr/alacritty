@@ -41,6 +41,12 @@ pub enum Event {
     /// Cursor blinking state has changed.
     CursorBlinkingChange(bool),
 
+    /// Change the RGB value of a terminal color.
+    SetColor(usize, Rgb),
+
+    /// Reset the RGB value of a terminal color to its default.
+    ResetColor(usize),
+
     /// New terminal content available.
     Wakeup,
 
@@ -60,6 +66,8 @@ impl Debug for Event {
             Event::ClipboardStore(ty, text) => write!(f, "ClipboardStore({:?}, {})", ty, text),
             Event::ClipboardLoad(ty, _) => write!(f, "ClipboardLoad({:?})", ty),
             Event::ColorRequest(index, _) => write!(f, "ColorRequest({})", index),
+            Event::SetColor(index, color) => write!(f, "SetColor({}, {:?})", index, color),
+            Event::ResetColor(index) => write!(f, "ResetColor({})", index),
             Event::PtyWrite(text) => write!(f, "PtyWrite({})", text),
             Event::Wakeup => write!(f, "Wakeup"),
             Event::Bell => write!(f, "Bell"),

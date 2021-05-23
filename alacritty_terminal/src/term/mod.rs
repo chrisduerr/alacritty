@@ -19,7 +19,7 @@ use crate::grid::{Dimensions, DisplayIter, Grid, Scroll};
 use crate::index::{self, Boundary, Column, Direction, Line, Point, Side};
 use crate::selection::{Selection, SelectionRange};
 use crate::term::cell::{Cell, Flags, LineLength};
-use crate::term::color::{Colors, Rgb};
+use crate::term::color::Rgb;
 use crate::vi_mode::{ViModeCursor, ViMotion};
 
 pub mod cell;
@@ -244,9 +244,6 @@ pub struct Term<T> {
 
     semantic_escape_chars: String,
 
-    /// Modified terminal colors.
-    colors: Colors,
-
     /// Current style of the cursor.
     cursor_style: Option<CursorStyle>,
 
@@ -308,7 +305,6 @@ impl<T> Term<T> {
             tabs,
             mode: Default::default(),
             scroll_region,
-            colors: color::Colors::default(),
             semantic_escape_chars: config.selection.semantic_escape_chars.to_owned(),
             cursor_style: None,
             default_cursor_style: config.cursor.style(),
@@ -1299,7 +1295,14 @@ impl<T: EventListener> Handler for Term<T> {
     #[inline]
     fn set_color(&mut self, index: usize, color: Rgb) {
         trace!("Setting color[{}] = {:?}", index, color);
-        self.colors[index] = Some(color);
+        self.event_proxy.send_event(Event::SetColor(index, color));
+    }
+
+    /// Reset the indexed color to original value.
+    #[inline]
+    fn reset_color(&mut self, index: usize) {
+        trace!("Resetting color[{}]", index);
+        self.event_proxy.send_event(Event::ResetColor(index));
     }
 
     /// Write a foreground/background color escape sequence with the current color.
@@ -1317,13 +1320,6 @@ impl<T: EventListener> Handler for Term<T> {
                 )
             }),
         ));
-    }
-
-    /// Reset the indexed color to original value.
-    #[inline]
-    fn reset_color(&mut self, index: usize) {
-        trace!("Resetting color[{}]", index);
-        self.colors[index] = None;
     }
 
     /// Store data into clipboard.
@@ -1832,7 +1828,6 @@ pub struct RenderableContent<'a> {
     pub selection: Option<SelectionRange>,
     pub cursor: RenderableCursor,
     pub display_offset: usize,
-    pub colors: &'a color::Colors,
     pub mode: TermMode,
 }
 
@@ -1843,7 +1838,6 @@ impl<'a> RenderableContent<'a> {
             display_offset: term.grid().display_offset(),
             cursor: RenderableCursor::new(term),
             selection: term.selection.as_ref().and_then(|s| s.to_range(term)),
-            colors: &term.colors,
             mode: *term.mode(),
         }
     }

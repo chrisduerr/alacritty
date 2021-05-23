@@ -1,0 +1,18 @@
+What we need:
+ - A PTY read buffer to debounce writes while locked
+ - No opreations taking forever with the terminal locked
+
+
+ Process:
+  - Read from PTY
+  - Try to lock terminal (Should we lock before reading and write straight to it?)
+    -> LOCKED:
+        - select!(mio, mutex)
+        - Mutex free -> Handle staged bytes
+    -> UNLOCKED:
+        - Handle all read bytes from PTY and go back to mio's polling
+
+
+TODO:
+ - Test channel performance for PTY instead of an array
+    -> Maybe can do the PTY -> terminal stuff in different thread

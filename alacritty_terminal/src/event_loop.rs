@@ -213,7 +213,6 @@ where
         let mut all_processed = 0;
         let mut processed = 0;
 
-        let reserve = self.terminal.reserve(); // TODO: Test if worth.
         let mut terminal;
         loop {
             let mut gogo = false;
@@ -230,19 +229,24 @@ where
             }
 
             // TODO: This seems to work, but actually fucks renderer.
+            //       Also not sure if the perma-ish lock is necessary.
+            //
+            //  -> Lock might need fairness?
+            //  -> We might actually not be waking up frequently enough?
+            //  !! The blocking takes so long, that we're reading a full 1MiB to the buffer.
+            //     As a result, it takes ~10ms to read all the data, blocking the renderer.
             terminal = self.terminal.try_lock();
             if let Some(mut terminal) = terminal {
                 for byte in &buf[..processed] {
                     state.parser.advance(&mut *terminal, *byte);
                 }
 
+                all_processed += std::mem::replace(&mut processed, 0);
                 if gogo || all_processed >= 65535 {
                     break;
                 }
-                all_processed += std::mem::replace(&mut processed, 0);
             }
         }
-        drop(reserve);
 
         // Queue terminal redraw unless all processed bytes were synchronized.
         if state.parser.sync_bytes_count() < all_processed && all_processed > 0 {
