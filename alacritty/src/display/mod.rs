@@ -189,7 +189,7 @@ pub struct Display {
 
     pub visual_bell: VisualBell,
 
-    /// Unmodified terminal to RGB color mapping.
+    /// Mapped RGB values for each terminal color.
     pub colors: List,
 
     /// State of the keyboard hints.
@@ -490,7 +490,7 @@ impl Display {
         while let Some(cell) = content.next() {
             grid_cells.push(cell);
         }
-        let background_color = content.colors[NamedColor::Background as usize];
+        let background_color = content.color(NamedColor::Background as usize);
         let display_offset = content.display_offset();
         let cursor = content.cursor();
 
@@ -653,7 +653,7 @@ impl Display {
     /// Update to a new configuration.
     pub fn update_config(&mut self, config: &Config) {
         self.visual_bell.update_config(&config.ui_config.bell);
-        self.colors.update_defaults(&config.ui_config.colors);
+        self.colors = List::from(&config.ui_config.colors);
     }
 
     /// Update the mouse/vi mode cursor hint highlighting.

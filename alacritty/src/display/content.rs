@@ -28,13 +28,13 @@ pub const MIN_CURSOR_CONTRAST: f64 = 1.5;
 ///
 /// This provides the terminal cursor and an iterator over all non-empty cells.
 pub struct RenderableContent<'a> {
-    pub colors: &'a List,
     terminal_content: TerminalContent<'a>,
     terminal_cursor: TerminalCursor,
     cursor: Option<RenderableCursor>,
     search: Regex<'a>,
     hint: Hint<'a>,
     config: &'a Config<UiConfig>,
+    colors: &'a List,
     focused_match: Option<&'a Match>,
 }
 
@@ -89,6 +89,11 @@ impl<'a> RenderableContent<'a> {
         self.cursor
     }
 
+    /// Get the RGB value for a color index.
+    pub fn color(&self, color: usize) -> Rgb {
+        self.terminal_content.colors[color].unwrap_or(self.colors[color])
+    }
+
     /// Assemble the information required to render the terminal cursor.
     ///
     /// This will return `None` when there is no cursor visible.
@@ -103,10 +108,8 @@ impl<'a> RenderableContent<'a> {
         } else {
             self.config.ui_config.colors.cursor
         };
-        let mut cursor_color = self
-            .colors
-            .get_modified(NamedColor::Cursor as usize)
-            .map_or(color.background, CellRgb::Rgb);
+        let mut cursor_color =
+            self.terminal_content.colors[NamedColor::Cursor].map_or(color.background, CellRgb::Rgb);
         let mut text_color = color.foreground;
 
         // Invert the cursor if it has a fixed background close to the cell's background.
@@ -226,8 +229,8 @@ impl RenderableCell {
 
             if fg == bg && !cell.flags.contains(Flags::HIDDEN) {
                 // Reveal inversed text when fg/bg is the same.
-                fg = content.colors[NamedColor::Background as usize];
-                bg = content.colors[NamedColor::Foreground as usize];
+                fg = content.color(NamedColor::Background as usize);
+                bg = content.color(NamedColor::Foreground as usize);
                 bg_alpha = 1.0;
             }
         } else if content.search.advance(cell.point) {
@@ -294,16 +297,16 @@ impl RenderableCell {
                         if ansi == NamedColor::Foreground
                             && ui_config.colors.primary.bright_foreground.is_none() =>
                     {
-                        content.colors[NamedColor::DimForeground as usize]
+                        content.color(NamedColor::DimForeground as usize)
                     },
                     // Draw bold text in bright colors *and* contains bold flag.
-                    (true, Flags::BOLD) => content.colors[ansi.to_bright() as usize],
+                    (true, Flags::BOLD) => content.color(ansi.to_bright() as usize),
                     // Cell is marked as dim and not bold.
                     (_, Flags::DIM) | (false, Flags::DIM_BOLD) => {
-                        content.colors[ansi.to_dim() as usize]
+                        content.color(ansi.to_dim() as usize)
                     },
                     // None of the above, keep original color..
-                    _ => content.colors[ansi as usize],
+                    _ => content.color(ansi as usize),
                 }
             },
             Color::Indexed(idx) => {
@@ -318,7 +321,7 @@ impl RenderableCell {
                     _ => idx as usize,
                 };
 
-                content.colors[idx]
+                content.color(idx)
             },
         }
     }
@@ -328,8 +331,8 @@ impl RenderableCell {
     fn compute_bg_rgb(content: &mut RenderableContent<'_>, bg: Color) -> Rgb {
         match bg {
             Color::Spec(rgb) => rgb,
-            Color::Named(ansi) => content.colors[ansi as usize],
-            Color::Indexed(idx) => content.colors[idx as usize],
+            Color::Named(ansi) => content.color(ansi as usize),
+            Color::Indexed(idx) => content.color(idx as usize),
         }
     }
 
