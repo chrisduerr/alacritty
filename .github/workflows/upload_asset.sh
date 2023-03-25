@@ -6,7 +6,7 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-repo="alacritty/alacritty"
+repo="chrisduerr/alacritty"
 file_path=$1
 bearer=$2
 
@@ -79,15 +79,11 @@ fi
 file_name=${file_path##*/}
 echo "Uploading asset $file_name to $upload_url..."
 curl -f \
+    -i \
     -X POST \
     -H "Authorization: Bearer $bearer" \
     -H "Content-Type: application/octet-stream" \
     --data-binary @"$file_path" \
-    "$upload_url?name=$file_name" \
-    &> /dev/null \
-|| { \
-    printf "\e[31mError: Unable to upload asset.\e[0m\n" \
-    && exit 3; \
-}
+    "$upload_url?name=$file_name"
 
 printf "\e[32mSuccess\e[0m\n"
