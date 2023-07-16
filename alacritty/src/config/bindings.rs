@@ -524,11 +524,11 @@ pub fn default_key_bindings() -> Vec<KeyBinding> {
             ViMotion::Last;
         Key6,   ModifiersState::SHIFT, +BindingMode::VI, ~BindingMode::SEARCH;
             ViMotion::FirstOccupied;
-        H,      ModifiersState::SHIFT, +BindingMode::VI, ~BindingMode::SEARCH;
+        H,                             +BindingMode::VI, ~BindingMode::SEARCH;
             ViMotion::High;
-        M,      ModifiersState::SHIFT, +BindingMode::VI, ~BindingMode::SEARCH;
+        M,                             +BindingMode::VI, ~BindingMode::SEARCH;
             ViMotion::Middle;
-        L,      ModifiersState::SHIFT, +BindingMode::VI, ~BindingMode::SEARCH;
+        L,                             +BindingMode::VI, ~BindingMode::SEARCH;
             ViMotion::Low;
         B,                             +BindingMode::VI, ~BindingMode::SEARCH;
             ViMotion::SemanticLeft;
