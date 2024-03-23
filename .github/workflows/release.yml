@@ -52,6 +52,7 @@ jobs:
       - name: Create msi installer
         run: |
           wix extension add -g WixToolset.UI.wixext WixToolset.Util.wixext
+          wix extension list
           wix build -arch "x64" -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext \
           -out "./Alacritty-${GITHUB_REF##*/}-installer.msi" "alacritty/windows/wix/alacritty.wxs"
       - name: Upload msi installer
