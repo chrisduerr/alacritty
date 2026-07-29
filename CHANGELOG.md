@@ -16,6 +16,10 @@ Notable changes to the `alacritty_terminal` crate are documented in its
 - Added the `Open Alacritty here` entry to the right-click context menu for folders on Windows
 - Minimum Rust version has been bumped to 1.88.0
 
+### Added
+
+- Inertial scrolling using `scrolling.velocity` config option
+
 ### Fixed
 
 - Spurious "Failed to set new owner of XCB selection" warnings on X11
