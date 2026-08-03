@@ -1869,7 +1869,7 @@ pub struct Velocity {
     last_sample: Option<Instant>,
     samples: [f64; VELOCITY_SAMPLES],
     sample_count: usize,
-    direction: f64,
+    direction: Option<f64>,
 
     active_velocity: Option<(Instant, f64)>,
 }
@@ -1879,9 +1879,9 @@ impl Velocity {
     pub fn update(&mut self, mut y_delta: f64) {
         // Cancel velocity when direction changes.
         let direction = y_delta.signum();
-        if self.direction != direction {
+        if direction != 0. && self.direction.is_some_and(|d| d != direction) {
             self.cancel();
-            self.direction = direction;
+            self.direction = Some(direction);
         }
 
         // Get elapsed time since last velocity update.
